@@ -163,6 +163,14 @@
             border-left: 3px solid var(--primary-light);
             padding-left: 11px;
         }
+        .nav-item.dragging {
+            opacity: 0.4;
+            border: 1px dashed var(--primary-light) !important;
+        }
+        .nav-item.drag-over {
+            border-top: 2px solid var(--primary-light) !important;
+            background-color: rgba(255, 255, 255, 0.1) !important;
+        }
         .nav-item-title {
             overflow: hidden;
             text-overflow: ellipsis;
@@ -200,7 +208,7 @@
             right: 40px;
             display: flex;
             gap: 12px;
-            z-index: 20;
+            z-index: 95;
         }
         .btn {
             background-color: var(--bg-card);
@@ -921,7 +929,7 @@
         
         <!-- Left Sidebar Navigation (The Leather Spine) -->
         <aside class="sidebar">
-            <div>
+            <div style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; min-height: 0;">
                 <div class="logo-section">
                     <h1 class="logo-text">Epic<span>Travel</span></h1>
                 </div>
@@ -1712,11 +1720,47 @@
             slidesState.forEach((slide, idx) => {
                 const li = document.createElement('li');
                 li.className = `nav-item ${idx === currentSlideIdx ? 'active' : ''}`;
+                li.setAttribute('draggable', 'true');
                 li.innerHTML = `
                     <span class="nav-item-title">${slide.name}</span>
                     <button class="delete-slide-btn" onclick="event.stopPropagation(); deleteSlide(${idx})">×</button>
                     <span class="nav-num">${String(idx + 1).padStart(2, '0')}</span>
                 `;
+                
+                // Drag and Drop reordering handlers
+                li.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', idx);
+                    li.classList.add('dragging');
+                });
+                
+                li.addEventListener('dragend', () => {
+                    li.classList.remove('dragging');
+                    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('drag-over'));
+                });
+                
+                li.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    li.classList.add('drag-over');
+                });
+                
+                li.addEventListener('dragleave', () => {
+                    li.classList.remove('drag-over');
+                });
+                
+                li.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    li.classList.remove('drag-over');
+                    const draggedIdx = parseInt(e.dataTransfer.getData('text/plain'));
+                    if (!isNaN(draggedIdx) && draggedIdx !== idx) {
+                        const [draggedSlide] = slidesState.splice(draggedIdx, 1);
+                        slidesState.splice(idx, 0, draggedSlide);
+                        currentSlideIdx = idx;
+                        savePresentationState();
+                        initNavigation();
+                        renderAllSlides();
+                    }
+                });
+                
                 li.onclick = () => {
                     goToSlide(idx);
                 };

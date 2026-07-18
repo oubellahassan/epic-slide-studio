@@ -623,11 +623,15 @@
             pointer-events: none; /* Allows click through when invisible */
         }
         body.presentation-mode .floating-nav-overlay {
-            pointer-events: auto; /* Active when visible */
+            pointer-events: auto;
+            opacity: 0.85;
         }
         body.presentation-mode:hover .floating-nav-overlay,
         body.presentation-mode .floating-nav-overlay:hover {
-            opacity: 0.85;
+            opacity: 1.0;
+        }
+        body.presentation-mode .exit-present-btn {
+            display: flex !important;
         }
         .float-nav-btn {
             background-color: rgba(42, 37, 32, 0.85);
@@ -998,6 +1002,12 @@
                 <div class="presenter-notes-content" id="notes-content">Slide speaking cues...</div>
             </div>
             
+            <!-- Floating Exit Presentation Button (Only visible during presentation mode) -->
+            <button class="btn btn-primary exit-present-btn" data-action="togglePresentationMode" 
+                    style="position: fixed; top: 20px; right: 20px; z-index: 9999; display: none; gap: 8px; align-items: center; box-shadow: var(--shadow-hover); border: 1px solid rgba(255,255,255,0.15); padding: 10px 18px;">
+                <span>❌</span> Exit Present
+            </button>
+
             <!-- Floating Navigation Controllers Overlay when Presenting -->
             <div class="floating-nav-overlay" id="floating-nav">
                 <button class="float-nav-btn" data-action="prevSlide" title="Previous Slide">◀</button>
@@ -1166,7 +1176,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.9";
+        const APP_VERSION = "1.0.10";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1581,7 +1591,7 @@
                         banner.style.display = 'flex';
                     }
                     setTimeout(() => {
-                        window.location.reload();
+                        window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
                     }, 2500);
                     return true;
                 } else if (APP_VERSION !== databaseVersion) {
@@ -2124,7 +2134,7 @@
                     case 'toggleEditor':            toggleEditor(); break;
                     case 'togglePresentationMode':  togglePresentationMode(); break;
                     case 'print':                   exportPdf(); break;
-                    case 'reload':                  window.location.reload(true); break;
+                    case 'reload':                  window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now(); break;
                     case 'toggleTheme':             toggleTheme(); break;
                     case 'openAddSlideModal':       openAddSlideModal(); break;
                     case 'closeAddSlideModal':      closeAddSlideModal(); break;

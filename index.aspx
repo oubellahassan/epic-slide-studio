@@ -860,7 +860,7 @@
                 width: auto !important;
                 overflow: visible !important;
             }
-            .sidebar, .top-actions, .controls-help, .editor-drawer, .floating-nav-overlay {
+            .sidebar, .top-actions, .controls-help, .editor-drawer, .floating-nav-overlay, #print-overlay, .modal-overlay {
                 display: none !important;
             }
             .stage {
@@ -1187,7 +1187,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.16";
+        const APP_VERSION = "1.0.17";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {

@@ -1187,7 +1187,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.15";
+        const APP_VERSION = "1.0.16";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1564,9 +1564,7 @@
             // Auto-trigger print if requested via query param (e.g. from Teams app link)
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('print') === 'true') {
-                setTimeout(() => {
-                    exportPdf();
-                }, 1000);
+                document.getElementById('print-overlay').style.display = 'flex';
             }
         });
 
@@ -3461,5 +3459,16 @@
             }
         }
     </script>
+
+    <!-- Print Helper Overlay -->
+    <div id="print-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 20000; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 20px; color: white; font-family: var(--font-sans);">
+        <div style="background: var(--bg-card); color: var(--text-primary); padding: 30px; border-radius: var(--radius-md); text-align: center; max-width: 400px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); border: 1px solid var(--border-color);">
+            <div style="font-size: 40px; margin-bottom: 15px;">🖨️</div>
+            <h3 style="font-family: var(--font-serif); font-size: 24px; margin-bottom: 10px; color: var(--primary);">Export Presentation PDF</h3>
+            <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 25px;">Your slides are loaded and ready. Click the button below to open the print dialog. In the dialog, make sure to select <strong>"Save as PDF"</strong> as the destination.</p>
+            <button class="btn btn-primary" onclick="window.print()" style="width: 100%; justify-content: center; font-size: 14px; padding: 12px; height: auto; font-weight:600; cursor:pointer;">📂 Print / Save as PDF</button>
+            <a href="javascript:void(0)" onclick="document.getElementById('print-overlay').style.display='none'" style="display: block; margin-top: 15px; font-size: 12px; color: var(--text-secondary); text-decoration: underline;">Close Preview</a>
+        </div>
+    </div>
 </body>
 </html>

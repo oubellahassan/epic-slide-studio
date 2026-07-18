@@ -2075,7 +2075,7 @@
                 switch (action) {
                     case 'toggleEditor':            toggleEditor(); break;
                     case 'togglePresentationMode':  togglePresentationMode(); break;
-                    case 'print':                   window.print(); break;
+                    case 'print':                   exportPdf(); break;
                     case 'reload':                  window.location.reload(true); break;
                     case 'toggleTheme':             toggleTheme(); break;
                     case 'openAddSlideModal':       openAddSlideModal(); break;
@@ -2204,7 +2204,7 @@
             let editorHtml = `
                 <div class="editor-group" style="background-color: rgba(200, 169, 126, 0.08); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                     <label class="editor-label" style="color: var(--primary);">Studio Theme Preset</label>
-                    <select class="editor-select" style="margin-bottom: 8px;" onchange="applyTheme(this.value)">
+                    <select class="editor-select" style="margin-bottom: 8px;" id="ed-theme-select">
                         <option value="luxury" ${presentationConfig.theme === 'luxury' ? 'selected' : ''}>Quiet Luxury (Beige)</option>
                         <option value="dark" ${presentationConfig.theme === 'dark' ? 'selected' : ''}>Obsidian Dark (Indigo)</option>
                         <option value="ocean" ${presentationConfig.theme === 'ocean' ? 'selected' : ''}>Deep Ocean (Navy)</option>
@@ -2212,7 +2212,7 @@
                     </select>
                     
                     <label class="editor-label" style="color: var(--primary);">Typography Preset</label>
-                    <select class="editor-select" onchange="applyFont(this.value)">
+                    <select class="editor-select" id="ed-font-select">
                         <option value="serif" ${presentationConfig.font === 'serif' ? 'selected' : ''}>Editorial Serif (Newsreader)</option>
                         <option value="sans" ${presentationConfig.font === 'sans' ? 'selected' : ''}>Modern Clean (Inter)</option>
                         <option value="outfit" ${presentationConfig.font === 'outfit' ? 'selected' : ''}>Elegant Geometric (Outfit)</option>
@@ -2226,7 +2226,7 @@
                 </div>
                 <div class="editor-group">
                     <label class="editor-label">Slide Layout</label>
-                    <select class="editor-select" id="edit-slide-layout" onchange="changeActiveSlideLayout(this.value)">
+                    <select class="editor-select" id="edit-slide-layout">
                         <option value="cover" ${slide.layout === 'cover' ? 'selected' : ''}>Title / Cover Slide</option>
                         <option value="agenda" ${slide.layout === 'agenda' ? 'selected' : ''}>Meeting Agenda Layout</option>
                         <option value="bullet-image" ${slide.layout === 'bullet-image' ? 'selected' : ''}>Standard Split (Bullets + Image)</option>
@@ -2330,8 +2330,8 @@
                     <label class="editor-label">Slide Image Path / Data URL</label>
                     <input type="text" class="editor-input" id="edit-slide-bgimage" value="${slide.bgImage || ''}">
                     
-                    <div class="editor-drop-zone" onclick="triggerLocalFileSelect()">
-                        📂 Click to browse or Drag & Drop image on the slide directly
+                    <div class="editor-drop-zone" id="editor-drop-zone-btn">
+                        📂 Click to browse or Drag &amp; Drop image on the slide directly
                     </div>
                     
                     <div class="editor-label" style="margin-top: 12px; font-size:10px;">Or choose extracted asset:</div>
@@ -2340,6 +2340,20 @@
             `;
 
             container.innerHTML = editorHtml;
+
+            // ── Bind all editor events programmatically (no inline handlers = Teams CSP safe) ──
+            const themeSelect = container.querySelector('#ed-theme-select');
+            if (themeSelect) themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+
+            const fontSelect = container.querySelector('#ed-font-select');
+            if (fontSelect) fontSelect.addEventListener('change', () => applyFont(fontSelect.value));
+
+            const layoutSelect = container.querySelector('#edit-slide-layout');
+            if (layoutSelect) layoutSelect.addEventListener('change', () => changeActiveSlideLayout(layoutSelect.value));
+
+            const dropZoneBtn = container.querySelector('#editor-drop-zone-btn');
+            if (dropZoneBtn) dropZoneBtn.addEventListener('click', () => triggerLocalFileSelect());
+
             loadGallery();
         }
 
@@ -2399,6 +2413,8 @@
             // Listen to layout selection changes
             container.addEventListener('change', (e) => {
                 if (e.target.id === 'edit-slide-layout') return; // Handled separately by changeActiveSlideLayout
+                if (e.target.id === 'ed-theme-select') return;  // Handled by programmatic listener in loadEditorFields
+                if (e.target.id === 'ed-font-select') return;   // Handled by programmatic listener in loadEditorFields
                 autoSaveChanges();
             });
         }
@@ -2976,6 +2992,23 @@
                 loadEditorFields();
             }
             renderAllSlides();
+        }
+
+        // Export PDF — detects if running inside Teams (print is blocked) and guides the user
+        function exportPdf() {
+            // In Teams/iframe, window.print() is silently blocked
+            const isInIframe = (() => { try { return window.self !== window.top; } catch(e) { return true; } })();
+            if (isInIframe) {
+                // Show the app URL and instruct user to open in browser for print
+                const appUrl = 'https://oubellahassan.github.io/epic-slide-studio/';
+                showToast('📤 Open app in browser to export PDF: ' + appUrl, 'info');
+                // Also try to copy URL to clipboard
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(appUrl).catch(() => {});
+                }
+                return;
+            }
+            window.print();
         }
 
         // Open Reminders Modal

@@ -2984,12 +2984,19 @@
             clearCanvas();
             
             const target = document.getElementById('app-container');
-            if (target.requestFullscreen) {
-                target.requestFullscreen().catch(() => {});
-            } else if (target.webkitRequestFullscreen) {
-                target.webkitRequestFullscreen().catch(() => {});
-            } else if (target.msRequestFullscreen) {
-                target.msRequestFullscreen().catch(() => {});
+            try {
+                if (target.requestFullscreen) {
+                    const p = target.requestFullscreen();
+                    if (p && p.catch) p.catch(() => {});
+                } else if (target.webkitRequestFullscreen) {
+                    const p = target.webkitRequestFullscreen();
+                    if (p && p.catch) p.catch(() => {});
+                } else if (target.msRequestFullscreen) {
+                    const p = target.msRequestFullscreen();
+                    if (p && p.catch) p.catch(() => {});
+                }
+            } catch(e) {
+                console.error("Fullscreen request failed: ", e);
             }
         }
 
@@ -3006,17 +3013,25 @@
             if (isNotesOpen) toggleNotesOverlay();
             clearCanvas();
             
-            const fsEl = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
-            if (fsEl) {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen().catch(() => {});
-                } else if (document.webkitExitFullscreen) {
-                    document.webkitExitFullscreen().catch(() => {});
-                } else if (document.mozCancelFullScreen) {
-                    document.mozCancelFullScreen().catch(() => {});
-                } else if (document.msExitFullscreen) {
-                    document.msExitFullscreen().catch(() => {});
+            try {
+                const fsEl = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullscreenElement || document.msFullscreenElement;
+                if (fsEl) {
+                    if (document.exitFullscreen) {
+                        const p = document.exitFullscreen();
+                        if (p && p.catch) p.catch(() => {});
+                    } else if (document.webkitExitFullscreen) {
+                        const p = document.webkitExitFullscreen();
+                        if (p && p.catch) p.catch(() => {});
+                    } else if (document.mozCancelFullScreen) {
+                        const p = document.mozCancelFullScreen();
+                        if (p && p.catch) p.catch(() => {});
+                    } else if (document.msExitFullscreen) {
+                        const p = document.msExitFullscreen();
+                        if (p && p.catch) p.catch(() => {});
+                    }
                 }
+            } catch(e) {
+                console.error("Fullscreen exit failed: ", e);
             }
         }
 

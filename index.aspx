@@ -1018,8 +1018,6 @@
             <span>Close: <kbd>Esc</kbd></span>
         </div>
 
-    </div>
-
     <!-- Add Slide Modal -->
     <div class="modal-overlay" id="add-slide-modal">
         <div class="modal-card">
@@ -1043,11 +1041,9 @@
                     <option value="feedback">Recognition / Value Card</option>
                 </select>
             </div>
-            <div class="editor-actions-row">
-                <button class="editor-btn-sub" data-action="closeAddSlideModal">Cancel</button>
-                <button class="btn btn-primary" style="padding: 8px 16px;" data-action="addNewSlide">Create Slide</button>
             </div>
         </div>
+    </div>
     <!-- Update Alert Banner -->
     <div id="update-banner" style="position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background-color: var(--bg-sidebar); color: var(--text-on-sidebar); border: 1px solid var(--primary-light); padding: 14px 28px; border-radius: var(--radius-md); box-shadow: 0 12px 35px rgba(0,0,0,0.35); z-index: 10000; font-size: 13px; font-weight: 500; display: none; align-items: center; gap: 10px;">
         🚀 <span style="color: var(--primary-light);">New studio update deployed.</span> Reloading workspace to apply...
@@ -1162,15 +1158,25 @@
         <div style="margin-top:10px; border-top: 1px solid var(--border-color); padding-top:15px; text-align: center;">
             <div id="autosave-status" style="font-size: 11px; color: var(--text-sidebar-muted); font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 6px;">
                 <span style="color: #10b981;">●</span> Cloud Autosave Active
-            </div>
         </div>
-    </div>
+    </div> <!-- Closes editor-drawer -->
+</div> <!-- Closes app-container -->
 
     <!-- Supabase Client CDN Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
         const APP_VERSION = "1.0.9";
+
+        // Global Error loggers to catch hidden iframe bugs and display as Toast
+        window.addEventListener('error', (e) => {
+            console.error("Global Error: ", e.message, " at ", e.filename, ":", e.lineno);
+            showToast('⚠️ JS Error: ' + e.message + ' (Line ' + e.lineno + ')', 'error');
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error("Unhandled Rejection: ", e.reason);
+            showToast('⚠️ Promise Rejection: ' + (e.reason ? (e.reason.message || e.reason) : 'Unknown'), 'error');
+        });
 
         // === SLIDES_DATA_START ===
         // Default PowerPoint slide state

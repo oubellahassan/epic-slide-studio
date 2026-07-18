@@ -1072,13 +1072,13 @@
             </div>
 
             <div class="editor-group">
-                <label class="editor-label">Webhook Destination Type</label>
+                <label class="editor-label">Webhook Posting Method</label>
                 <select class="editor-select" id="rem-webhook-type" style="font-size:12px; height:32px;">
-                    <option value="teams-channel">Teams Channel Webhook (Individual Adaptive Card mention)</option>
-                    <option value="power-automate">Power Automate Webhook (Sends individual Email & Activity payloads)</option>
+                    <option value="teams-channel">Individual Cards (Separate post per leader to trigger personal Teams Activity pings)</option>
+                    <option value="teams-channel-group">Group Card (Single post listing all incomplete leaders in one card)</option>
                 </select>
                 <div style="font-size:9.5px; color: var(--text-secondary); margin-top:4px; line-height: 1.35;">
-                    💡 <strong>Power Automate:</strong> Sends <code>{ name, email, message, app_url }</code>. You can trigger a flow to send activity notifications or direct emails.
+                    💡 Teams triggers a personal Activity feed alert for the mentioned user when their name is posted via webhook.
                 </div>
             </div>
 
@@ -1187,7 +1187,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.12";
+        const APP_VERSION = "1.0.13";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -3163,14 +3163,23 @@
                 });
 
                 const row = document.createElement('div');
-                row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 10px;";
+                row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;";
+                
+                const nudgeMsg = encodeURIComponent(`Hi ${leader}, please make sure your progress slides are filled in for the monthly meeting. Click here to edit: https://oubellahassan.github.io/epic-slide-studio/`);
+                const teamsChatUrl = `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}&message=${nudgeMsg}`;
+                const emailUrl = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("Monthly Progress Slide Nudge")}&body=${nudgeMsg}`;
+
                 row.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <input type="checkbox" class="nudge-checkbox" value="${leader}" ${!isComplete ? 'checked' : ''} style="cursor:pointer; width:15px; height:15px;">
-                        <span style="font-weight:600; font-size:12.5px; color: var(--text-primary);">${leader}</span>
-                        ${!isComplete ? '<span style="font-size:9.5px; background:#f59e0b; color:white; padding:1px 5px; border-radius:10px; font-weight:700;">EMPTY</span>' : '<span style="font-size:9.5px; background:#10b981; color:white; padding:1px 5px; border-radius:10px; font-weight:700;">DONE</span>'}
+                    <div style="display:flex; align-items:center; gap:6px; flex: 1; min-width: 0;">
+                        <input type="checkbox" class="nudge-checkbox" value="${leader}" ${!isComplete ? 'checked' : ''} style="cursor:pointer; width:15px; height:15px; flex-shrink: 0;">
+                        <span style="font-weight:600; font-size:12.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;" title="${leader}">${leader}</span>
+                        ${!isComplete ? '<span style="font-size:9px; background:#f59e0b; color:white; padding:1px 4px; border-radius:10px; font-weight:700; flex-shrink: 0;">EMPTY</span>' : '<span style="font-size:9px; background:#10b981; color:white; padding:1px 4px; border-radius:10px; font-weight:700; flex-shrink: 0;">DONE</span>'}
                     </div>
-                    <input type="email" class="editor-input leader-email-input" data-leader="${leader}" value="${email}" style="width: 220px; padding: 4px 8px; font-size:11.5px;" placeholder="Email address">
+                    <div style="display:flex; align-items:center; gap:5px; flex-shrink: 0;">
+                        <input type="email" class="editor-input leader-email-input" data-leader="${leader}" value="${email}" style="width: 155px; padding: 4px 6px; font-size:11.5px; height: 26px; border-radius: 4px;" placeholder="Email address">
+                        <a href="${teamsChatUrl}" target="_blank" title="Ping on Teams Chat" style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-card); text-decoration: none; font-size: 13px; transition: all 0.2s;" onmouseover="this.style.background='var(--primary-light)'; this.style.color='white';" onmouseout="this.style.background='var(--bg-card)'; this.style.color='inherit';">💬</a>
+                        <a href="${emailUrl}" title="Send Email Nudge" style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-card); text-decoration: none; font-size: 13px; transition: all 0.2s;" onmouseover="this.style.background='var(--primary-light)'; this.style.color='white';" onmouseout="this.style.background='var(--bg-card)'; this.style.color='inherit';">✉️</a>
+                    </div>
                 `;
                 nudgeList.appendChild(row);
             });
@@ -3306,22 +3315,32 @@
             let failCount = 0;
             const appUrl = 'https://oubellahassan.github.io/epic-slide-studio/';
 
-            // Loop and send individual notifications to each selected leader
+            // 1. Group Card: Send one post for all leaders
+            if (webhookType === 'teams-channel-group') {
+                const msgText = "Hi everyone, please make sure your progress slides are filled in for the monthly meeting. Click below to edit.";
+                const payload = buildTeamsPayload(speakersToNudge, msgText);
+                try {
+                    const response = await fetch(webhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) {
+                        showToast('⚡ Group nudge card sent to Teams channel!', 'success');
+                    } else {
+                        showToast('Failed to send nudge. Verify Webhook URL.', 'error');
+                    }
+                } catch (e) {
+                    console.error('Teams nudge failed:', e);
+                    showToast('Error sending nudge. Check console.', 'error');
+                }
+                return;
+            }
+
+            // 2. Individual Cards: Loop and send individual notifications to each selected leader
             for (const s of speakersToNudge) {
                 const msgText = `Hi ${s.name}, please make sure your progress slides are filled in for the monthly meeting. Click below to edit.`;
-                let payload;
-                if (webhookType === 'power-automate') {
-                    // Send clean JSON for Power Automate flow processing
-                    payload = {
-                        name: s.name,
-                        email: s.email,
-                        message: msgText,
-                        app_url: appUrl
-                    };
-                } else {
-                    // Send direct Adaptive Card mention for Teams webhook
-                    payload = buildTeamsPayload([s], msgText);
-                }
+                const payload = buildTeamsPayload([s], msgText);
 
                 try {
                     const response = await fetch(webhookUrl, {

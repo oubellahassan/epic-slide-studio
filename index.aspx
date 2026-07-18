@@ -1071,6 +1071,17 @@
                 <input type="text" class="editor-input" id="rem-webhook-url" placeholder="https://yourcompany.webhook.office.com/webhookb2/..." style="font-family: var(--font-mono); font-size:11px;">
             </div>
 
+            <div class="editor-group">
+                <label class="editor-label">Webhook Destination Type</label>
+                <select class="editor-select" id="rem-webhook-type" style="font-size:12px; height:32px;">
+                    <option value="teams-channel">Teams Channel Webhook (Individual Adaptive Card mention)</option>
+                    <option value="power-automate">Power Automate Webhook (Sends individual Email & Activity payloads)</option>
+                </select>
+                <div style="font-size:9.5px; color: var(--text-secondary); margin-top:4px; line-height: 1.35;">
+                    💡 <strong>Power Automate:</strong> Sends <code>{ name, email, message, app_url }</code>. You can trigger a flow to send activity notifications or direct emails.
+                </div>
+            </div>
+
             <!-- List of Leaders with Emails and check boxes to nudge -->
             <div class="editor-group" style="border-top: 1px solid var(--border-color); margin-top:15px; padding-top:15px;">
                 <label class="editor-label" style="margin-bottom:10px;">Leader Email Mapping & Nudge List</label>
@@ -1176,7 +1187,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.11";
+        const APP_VERSION = "1.0.12";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1739,6 +1750,9 @@
             }
             if (typeof presentationConfig.teams_webhook_url !== 'string') {
                 presentationConfig.teams_webhook_url = "";
+            }
+            if (typeof presentationConfig.teams_webhook_type !== 'string') {
+                presentationConfig.teams_webhook_type = "teams-channel";
             }
         }
 
@@ -3108,6 +3122,7 @@
 
         async function openRemindersModal() {
             document.getElementById('rem-webhook-url').value = presentationConfig.teams_webhook_url || "";
+            document.getElementById('rem-webhook-type').value = presentationConfig.teams_webhook_type || "teams-channel";
             
             // Generate list of unique slide leaders
             const nudgeList = document.getElementById('leaders-nudge-list');
@@ -3179,6 +3194,9 @@
                         if (sched.webhook_url) {
                             document.getElementById('rem-webhook-url').value = sched.webhook_url;
                         }
+                        if (sched.webhook_type) {
+                            document.getElementById('rem-webhook-type').value = sched.webhook_type;
+                        }
                     }
                 } catch (e) {
                     console.error("Failed to load recurring schedule: ", e);
@@ -3191,6 +3209,7 @@
 
         function closeRemindersModal() {
             presentationConfig.teams_webhook_url = document.getElementById('rem-webhook-url').value.trim();
+            presentationConfig.teams_webhook_type = document.getElementById('rem-webhook-type').value;
             
             document.querySelectorAll('.leader-email-input').forEach(input => {
                 const leader = input.getAttribute('data-leader');
@@ -3263,6 +3282,7 @@
         // Send instant notification via Webhook (Client-side POST)
         async function sendInstantReminder() {
             const webhookUrl = document.getElementById('rem-webhook-url').value.trim();
+            const webhookType = document.getElementById('rem-webhook-type').value;
             if (!webhookUrl) {
                 showToast('Please configure a valid MS Teams Webhook URL first.', 'error');
                 return;
@@ -3282,23 +3302,48 @@
                 return;
             }
 
-            const payload = buildTeamsPayload(speakersToNudge, "Hi everyone, please make sure your progress slides are filled in for the monthly meeting. Click below to edit.");
+            let successCount = 0;
+            let failCount = 0;
+            const appUrl = 'https://oubellahassan.github.io/epic-slide-studio/';
 
-            try {
-                const response = await fetch(webhookUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                if (response.ok) {
-                    showToast('⚡ Nudge sent to Microsoft Teams!', 'success');
+            // Loop and send individual notifications to each selected leader
+            for (const s of speakersToNudge) {
+                const msgText = `Hi ${s.name}, please make sure your progress slides are filled in for the monthly meeting. Click below to edit.`;
+                let payload;
+                if (webhookType === 'power-automate') {
+                    // Send clean JSON for Power Automate flow processing
+                    payload = {
+                        name: s.name,
+                        email: s.email,
+                        message: msgText,
+                        app_url: appUrl
+                    };
                 } else {
-                    showToast('Failed to send nudge. Verify Webhook URL.', 'error');
+                    // Send direct Adaptive Card mention for Teams webhook
+                    payload = buildTeamsPayload([s], msgText);
                 }
-            } catch (e) {
-                console.error('Teams nudge failed:', e);
-                showToast('Error sending nudge. Check console.', 'error');
+
+                try {
+                    const response = await fetch(webhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                } catch (e) {
+                    console.error("Nudge failed for " + s.name + ":", e);
+                    failCount++;
+                }
+            }
+
+            if (failCount === 0) {
+                showToast(`⚡ Nudges sent successfully to ${successCount} leaders!`, 'success');
+            } else {
+                showToast(`⚠️ Nudge results: ${successCount} success, ${failCount} failed.`, 'info');
             }
         }
 
@@ -3310,6 +3355,7 @@
             }
 
             const webhookUrl = document.getElementById('rem-webhook-url').value.trim();
+            const webhookType = document.getElementById('rem-webhook-type').value;
             const schedDay = document.getElementById('rem-schedule-day').value;
             const schedTime = document.getElementById('rem-schedule-time').value;
             const isActive = document.getElementById('rem-schedule-active').checked;
@@ -3321,12 +3367,14 @@
 
             // Set configuration webhook URL as fallback too
             presentationConfig.teams_webhook_url = webhookUrl;
+            presentationConfig.teams_webhook_type = webhookType;
             savePresentationState();
 
             const payload = {
                 day_of_month: parseInt(schedDay),
                 time_of_day: schedTime + ':00',
                 webhook_url: webhookUrl,
+                webhook_type: webhookType,
                 is_active: isActive,
                 timezone: 'Europe/London'
             };

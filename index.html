@@ -1176,7 +1176,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.10";
+        const APP_VERSION = "1.0.11";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1549,6 +1549,14 @@
 
             // Initialize auto-save event listeners
             initEditorAutoSave();
+
+            // Auto-trigger print if requested via query param (e.g. from Teams app link)
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('print') === 'true') {
+                setTimeout(() => {
+                    exportPdf();
+                }, 1000);
+            }
         });
 
         // Connect to Supabase Cloud Database for real-time collaboration
@@ -1642,6 +1650,7 @@
                         dbLastUpdated = recordTime;
                         slidesState = data.slides;
                         presentationConfig = data.config;
+                        ensureConfigDefaults();
                         
                         applyTheme(presentationConfig.theme);
                         applyFont(presentationConfig.font);
@@ -1702,6 +1711,7 @@
                             dbLastUpdated = recordTime;
                             slidesState = newRecord.slides;
                             presentationConfig = newRecord.config;
+                            ensureConfigDefaults();
                             
                             applyTheme(presentationConfig.theme);
                             applyFont(presentationConfig.font);
@@ -1717,6 +1727,21 @@
                 .subscribe();
         }
 
+        // Ensure presentationConfig has all required properties and defaults
+        function ensureConfigDefaults() {
+            if (!presentationConfig || typeof presentationConfig !== 'object') {
+                presentationConfig = {};
+            }
+            if (!presentationConfig.theme) presentationConfig.theme = 'luxury';
+            if (!presentationConfig.font) presentationConfig.font = 'serif';
+            if (!presentationConfig.leader_emails || typeof presentationConfig.leader_emails !== 'object') {
+                presentationConfig.leader_emails = {};
+            }
+            if (typeof presentationConfig.teams_webhook_url !== 'string') {
+                presentationConfig.teams_webhook_url = "";
+            }
+        }
+
         // Load theme configuration
         function loadStoredConfig() {
             const stored = safeStorage.getItem('epic-presentation-config');
@@ -1725,12 +1750,7 @@
                     presentationConfig = JSON.parse(stored);
                 } catch(e) {}
             }
-            if (!presentationConfig.leader_emails) {
-                presentationConfig.leader_emails = {};
-            }
-            if (!presentationConfig.teams_webhook_url) {
-                presentationConfig.teams_webhook_url = "";
-            }
+            ensureConfigDefaults();
             applyTheme(presentationConfig.theme);
             applyFont(presentationConfig.font);
         }
@@ -3069,16 +3089,15 @@
 
         // Export PDF — detects if running inside Teams (print is blocked) and guides the user
         function exportPdf() {
-            // In Teams/iframe, window.print() is silently blocked
-            const isInIframe = (() => { try { return window.self !== window.top; } catch(e) { return true; } })();
-            if (isInIframe) {
-                // Show the app URL and instruct user to open in browser for print
-                const appUrl = 'https://oubellahassan.github.io/epic-slide-studio/';
-                showToast('📤 Open app in browser to export PDF: ' + appUrl, 'info');
-                // Also try to copy URL to clipboard
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(appUrl).catch(() => {});
-                }
+            // Check if we are running in an iframe (e.g. MS Teams)
+            const isIframe = window.self !== window.top;
+            const appUrl = 'https://oubellahassan.github.io/epic-slide-studio/';
+            
+            if (isIframe) {
+                showToast('📥 Opening in new tab to export PDF...', 'info');
+                window.open(appUrl + '?print=true', '_blank');
+                // Automatically copy link to clipboard to make it easier for the user
+                navigator.clipboard.writeText(appUrl).catch(() => {});
                 return;
             }
             window.print();

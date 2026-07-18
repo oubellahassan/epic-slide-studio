@@ -1073,15 +1073,57 @@
                 </div>
             </div>
 
-            <!-- Schedule Auto Nudge -->
+            <!-- Schedule Monthly Recurring Nudge -->
             <div class="editor-group" style="border-top: 1px solid var(--border-color); margin-top:15px; padding-top:15px;">
-                <label class="editor-label">Schedule Automated Reminder</label>
-                <div style="display:flex; gap:10px;">
-                    <input type="datetime-local" class="editor-input" id="rem-schedule-time" style="flex:1;">
-                    <button class="btn btn-primary" data-action="scheduleAutomatedReminder" style="padding: 8px 12px; font-size:12px; font-weight:600;">⏰ Schedule</button>
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+                    <label class="editor-label" style="margin: 0;">Monthly Auto-Reminder Schedule</label>
+                    <label style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--text-primary); cursor:pointer;">
+                        <input type="checkbox" id="rem-schedule-active" style="width:14px; height:14px; cursor:pointer;" checked>
+                        <span>Active</span>
+                    </label>
                 </div>
-                <div id="scheduled-reminders-list" style="font-size:11px; margin-top:10px; color: var(--text-secondary);">
-                    <!-- List of active scheduled reminders -->
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="flex:1; display:flex; align-items:center; gap:5px;">
+                        <span style="font-size:11.5px; color:var(--text-secondary);">Day</span>
+                        <select class="editor-select" id="rem-schedule-day" style="width: 70px; padding: 4px; height: 32px; font-size: 12px; min-width: 60px;">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10</option>
+                            <option value="11">11</option>
+                            <option value="12">12</option>
+                            <option value="13">13</option>
+                            <option value="14">14</option>
+                            <option value="15" selected>15</option>
+                            <option value="16">16</option>
+                            <option value="17">17</option>
+                            <option value="18">18</option>
+                            <option value="19">19</option>
+                            <option value="20">20</option>
+                            <option value="21">21</option>
+                            <option value="22">22</option>
+                            <option value="23">23</option>
+                            <option value="24">24</option>
+                            <option value="25">25</option>
+                            <option value="26">26</option>
+                            <option value="27">27</option>
+                            <option value="28">28</option>
+                        </select>
+                    </div>
+                    <div style="flex:1.5; display:flex; align-items:center; gap:5px;">
+                        <span style="font-size:11.5px; color:var(--text-secondary);">At Time</span>
+                        <input type="time" class="editor-input" id="rem-schedule-time" style="padding: 4px 8px; height: 32px; font-size:12px; margin:0;" value="09:00">
+                    </div>
+                    <button class="btn btn-primary" data-action="saveMonthlySchedule" style="padding: 8px 12px; font-size:11px; font-weight:600; height:32px; white-space: nowrap;">💾 Save Schedule</button>
+                </div>
+                <div id="scheduled-reminders-list" style="font-size:11px; margin-top:10px; color: var(--text-secondary); background: rgba(0,0,0,0.15); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); line-height: 1.4;">
+                    <!-- Active recurring schedule summary -->
                 </div>
             </div>
 
@@ -2084,7 +2126,7 @@
                     case 'openRemindersModal':      openRemindersModal(); break;
                     case 'closeRemindersModal':     closeRemindersModal(); break;
                     case 'sendInstantReminder':     sendInstantReminder(); break;
-                    case 'scheduleAutomatedReminder': scheduleAutomatedReminder(); break;
+                    case 'saveMonthlySchedule':     saveMonthlySchedule(); break;
                     case 'resetToDefault':          resetToDefault(); break;
                     case 'moveSlideUp':             moveSlideUp(); break;
                     case 'moveSlideDown':           moveSlideDown(); break;
@@ -3012,7 +3054,9 @@
         }
 
         // Open Reminders Modal
-        function openRemindersModal() {
+        let activeRecurringScheduleId = null;
+
+        async function openRemindersModal() {
             document.getElementById('rem-webhook-url').value = presentationConfig.teams_webhook_url || "";
             
             // Generate list of unique slide leaders
@@ -3066,7 +3110,32 @@
                 nudgeList.appendChild(row);
             });
 
-            renderScheduledReminders();
+            activeRecurringScheduleId = null;
+            if (supabaseClient) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('presentation_recurring_schedule')
+                        .select('*')
+                        .limit(1);
+                    
+                    if (data && data.length > 0) {
+                        const sched = data[0];
+                        activeRecurringScheduleId = sched.id;
+                        document.getElementById('rem-schedule-active').checked = sched.is_active;
+                        document.getElementById('rem-schedule-day').value = sched.day_of_month.toString();
+                        if (sched.time_of_day) {
+                            document.getElementById('rem-schedule-time').value = sched.time_of_day.slice(0, 5);
+                        }
+                        if (sched.webhook_url) {
+                            document.getElementById('rem-webhook-url').value = sched.webhook_url;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load recurring schedule: ", e);
+                }
+            }
+
+            renderMonthlyScheduleStatus();
             document.getElementById('reminders-modal').classList.add('open');
         }
 
@@ -3183,88 +3252,96 @@
             }
         }
 
-        // Schedule server-side pg_cron/pg_net reminder via Supabase
-        async function scheduleAutomatedReminder() {
+        // Save monthly recurring reminder schedule in Supabase (Admin Mode)
+        async function saveMonthlySchedule() {
             if (!supabaseClient) {
-                showToast('Supabase connection required to schedule reminders.', 'error');
+                showToast('Supabase connection required to save recurring reminders.', 'error');
                 return;
             }
 
             const webhookUrl = document.getElementById('rem-webhook-url').value.trim();
-            const schedTimeStr = document.getElementById('rem-schedule-time').value;
-            if (!webhookUrl || !schedTimeStr) {
-                showToast('Please enter both Webhook URL and a schedule date/time.', 'error');
+            const schedDay = document.getElementById('rem-schedule-day').value;
+            const schedTime = document.getElementById('rem-schedule-time').value;
+            const isActive = document.getElementById('rem-schedule-active').checked;
+
+            if (!webhookUrl || !schedDay || !schedTime) {
+                showToast('Please specify a valid Webhook URL, Day, and Time.', 'error');
                 return;
             }
 
-            const checkedCheckboxes = document.querySelectorAll('.nudge-checkbox:checked');
-            const speakersToNudge = [];
-            checkedCheckboxes.forEach(cb => {
-                const name = cb.value;
-                const emailInput = document.querySelector(`.leader-email-input[data-leader="${name}"]`);
-                const email = emailInput ? emailInput.value.trim() : (name.toLowerCase() + "@epic.travel");
-                speakersToNudge.push({ name, email });
-            });
+            // Set configuration webhook URL as fallback too
+            presentationConfig.teams_webhook_url = webhookUrl;
+            savePresentationState();
 
-            if (speakersToNudge.length === 0) {
-                showToast('Please select at least one leader to schedule.', 'error');
-                return;
+            const payload = {
+                day_of_month: parseInt(schedDay),
+                time_of_day: schedTime + ':00',
+                webhook_url: webhookUrl,
+                is_active: isActive,
+                timezone: 'Europe/London'
+            };
+
+            if (activeRecurringScheduleId) {
+                payload.id = activeRecurringScheduleId;
             }
-
-            const runAt = new Date(schedTimeStr).toISOString();
-            const payload = buildTeamsPayload(speakersToNudge, "Automated Reminder: Monthly progress slides are due. Please complete yours before the meeting.");
 
             try {
-                const { error } = await supabaseClient
-                    .from('presentation_reminders')
-                    .insert([{
-                        run_at: runAt,
-                        webhook_url: webhookUrl,
-                        payload: payload,
-                        completed: false
-                    }]);
-                
+                const { data, error } = await supabaseClient
+                    .from('presentation_recurring_schedule')
+                    .upsert([payload])
+                    .select();
+
                 if (!error) {
-                    showToast('⏰ Reminder scheduled successfully!', 'success');
-                    document.getElementById('rem-schedule-time').value = '';
-                    renderScheduledReminders();
+                    if (data && data.length > 0) {
+                        activeRecurringScheduleId = data[0].id;
+                    }
+                    showToast('💾 Recurring monthly reminder saved!', 'success');
+                    renderMonthlyScheduleStatus();
                 } else {
-                    showToast('Scheduling failed: ' + error.message, 'error');
+                    showToast('Failed to save schedule: ' + error.message, 'error');
                 }
             } catch (e) {
-                console.error('Scheduler failed:', e);
-                showToast('Failed to connect to scheduler database.', 'error');
+                console.error('Save schedule failed:', e);
+                showToast('Failed to connect to monthly schedule database.', 'error');
             }
         }
 
-        // Render list of active/completed scheduled runs from Supabase
-        async function renderScheduledReminders() {
+        // Render monthly schedule summary in modal status container
+        async function renderMonthlyScheduleStatus() {
             const listDiv = document.getElementById('scheduled-reminders-list');
-            if (!listDiv || !supabaseClient) return;
+            if (!listDiv) return;
             
+            if (!supabaseClient) {
+                listDiv.innerHTML = "Supabase offline. Cannot load schedule status.";
+                return;
+            }
+
             try {
                 const { data, error } = await supabaseClient
-                    .from('presentation_reminders')
+                    .from('presentation_recurring_schedule')
                     .select('*')
-                    .order('run_at', { ascending: true })
-                    .limit(5);
+                    .limit(1);
                 
                 if (data && data.length > 0) {
-                    let html = "<div style='font-weight:600; margin-top:8px; margin-bottom:5px;'>Active Scheduled Runs:</div>";
-                    data.forEach(item => {
-                        const localTime = new Date(item.run_at).toLocaleString();
-                        html += `
-                            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.15); padding: 4px 8px; border-radius: var(--radius-sm); margin-bottom:4px;">
-                                <span>📅 ${localTime}</span>
-                                ${item.completed ? '<span style="color:#10b981; font-weight:bold;">Sent ✓</span>' : '<span style="color:#f59e0b; font-weight:bold;">Pending ⏰</span>'}
-                            </div>
+                    const sched = data[0];
+                    if (sched.is_active) {
+                        const triggerStr = sched.last_scheduled_month ? `Last triggered month: ${sched.last_scheduled_month}` : 'Not triggered yet';
+                        listDiv.innerHTML = `
+                            <div style="font-weight:600; margin-bottom:4px;">🟢 Active Monthly Schedule:</div>
+                            <div>Runs on Day <strong>${sched.day_of_month}</strong> of each month at <strong>${sched.time_of_day.slice(0, 5)}</strong> (London Time).</div>
+                            <div style="font-size:9.5px; color: var(--text-secondary); margin-top:4px;">${triggerStr}</div>
                         `;
-                    });
-                    listDiv.innerHTML = html;
+                    } else {
+                        listDiv.innerHTML = `
+                            <span style="color:#ef4444; font-weight:600;">🔴 Monthly reminder schedule is currently paused.</span>
+                        `;
+                    }
                 } else {
-                    listDiv.innerHTML = "No scheduled runs active.";
+                    listDiv.innerHTML = "No recurring monthly reminder schedule configured. Fill details above and click Save.";
                 }
-            } catch(e) {}
+            } catch(e) {
+                listDiv.innerHTML = "Error loading schedule status.";
+            }
         }
     </script>
 </body>

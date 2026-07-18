@@ -1187,7 +1187,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.13";
+        const APP_VERSION = "1.0.15";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -3109,7 +3109,7 @@
             
             if (isIframe) {
                 showToast('📥 Opening in new tab to export PDF...', 'info');
-                window.open(appUrl + '?print=true', '_blank');
+                window.open(appUrl + '?print=true&v=' + Date.now(), '_blank');
                 // Automatically copy link to clipboard to make it easier for the user
                 navigator.clipboard.writeText(appUrl).catch(() => {});
                 return;
@@ -3165,7 +3165,7 @@
                 const row = document.createElement('div');
                 row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;";
                 
-                const nudgeMsg = encodeURIComponent(`Hi ${leader}, please make sure your progress slides are filled in for the monthly meeting. Click here to edit: https://oubellahassan.github.io/epic-slide-studio/`);
+                const nudgeMsg = encodeURIComponent(`Hi ${leader}, please make sure your progress slides are filled in for the monthly meeting. Click here to edit: https://teams.microsoft.com/l/entity/d17b5e40-fa6e-444a-aeb8-c04746f14798/epicSlideStudioTab`);
                 const teamsChatUrl = `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}&message=${nudgeMsg}`;
                 const emailUrl = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("Monthly Progress Slide Nudge")}&body=${nudgeMsg}`;
 
@@ -3313,7 +3313,7 @@
 
             let successCount = 0;
             let failCount = 0;
-            const appUrl = 'https://oubellahassan.github.io/epic-slide-studio/';
+            const appUrl = 'https://teams.microsoft.com/l/entity/d17b5e40-fa6e-444a-aeb8-c04746f14798/epicSlideStudioTab';
 
             // 1. Group Card: Send one post for all leaders
             if (webhookType === 'teams-channel-group') {

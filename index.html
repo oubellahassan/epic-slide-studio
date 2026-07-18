@@ -3112,7 +3112,7 @@
         async function sendInstantReminder() {
             const webhookUrl = document.getElementById('rem-webhook-url').value.trim();
             if (!webhookUrl) {
-                alert("Please configure a valid MS Teams Webhook URL first.");
+                showToast('Please configure a valid MS Teams Webhook URL first.', 'error');
                 return;
             }
 
@@ -3126,7 +3126,7 @@
             });
 
             if (speakersToNudge.length === 0) {
-                alert("Please select at least one leader to nudge.");
+                showToast('Please select at least one leader to nudge.', 'error');
                 return;
             }
 
@@ -3153,14 +3153,14 @@
         // Schedule server-side pg_cron/pg_net reminder via Supabase
         async function scheduleAutomatedReminder() {
             if (!supabaseClient) {
-                alert("Supabase integration is required to schedule automated offline reminders.");
+                showToast('Supabase connection required to schedule reminders.', 'error');
                 return;
             }
 
             const webhookUrl = document.getElementById('rem-webhook-url').value.trim();
             const schedTimeStr = document.getElementById('rem-schedule-time').value;
             if (!webhookUrl || !schedTimeStr) {
-                alert("Please enter both the Webhook URL and a valid schedule date/time.");
+                showToast('Please enter both Webhook URL and a schedule date/time.', 'error');
                 return;
             }
 
@@ -3174,7 +3174,7 @@
             });
 
             if (speakersToNudge.length === 0) {
-                alert("Please select at least one leader to schedule.");
+                showToast('Please select at least one leader to schedule.', 'error');
                 return;
             }
 

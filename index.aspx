@@ -841,6 +841,92 @@
             margin-bottom: 20px;
         }
 
+        /* Dynamic Image Placement & Styling Controls */
+        .slide-container[data-image-placement="left"] .slide-split-wrapper {
+            flex-direction: row-reverse !important;
+        }
+        .slide-container[data-image-placement="hidden"] .slide-image-pane {
+            display: none !important;
+        }
+        .slide-container[data-image-placement="hidden"] .slide-text-pane {
+            width: 100% !important;
+            max-width: 900px !important;
+            margin: 0 auto !important;
+            flex: 1 !important;
+        }
+        .slide-container[data-image-placement="background"] .slide-split-wrapper {
+            position: relative !important;
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
+        }
+        .slide-container[data-image-placement="background"] .slide-image-pane {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            z-index: 1 !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+        }
+        .slide-container[data-image-placement="background"] .slide-image-pane::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, var(--image-opacity, 0));
+            z-index: 2;
+            pointer-events: none;
+            transition: background 0.3s;
+        }
+        .slide-container[data-image-placement="background"] .slide-text-pane {
+            position: relative !important;
+            z-index: 3 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: transparent !important;
+            padding: 50px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
+        }
+        
+        /* Image Sizing Styles */
+        .slide-container[data-image-fit="contain"] .slide-image-pane img {
+            object-fit: contain !important;
+            background: #111;
+        }
+        .slide-container[data-image-fit="cover"] .slide-image-pane img {
+            object-fit: cover !important;
+        }
+        
+        /* Image Alignment Styles */
+        .slide-container[data-image-position="center"] .slide-image-pane img { object-position: center !important; }
+        .slide-container[data-image-position="top"] .slide-image-pane img { object-position: top !important; }
+        .slide-container[data-image-position="bottom"] .slide-image-pane img { object-position: bottom !important; }
+        .slide-container[data-image-position="left"] .slide-image-pane img { object-position: left !important; }
+        .slide-container[data-image-position="right"] .slide-image-pane img { object-position: right !important; }
+        
+        /* Text color overrides for high overlay dark background values */
+        .slide-container[data-image-placement="background"] .slide-text-pane h1,
+        .slide-container[data-image-placement="background"] .slide-text-pane h2,
+        .slide-container[data-image-placement="background"] .slide-text-pane h3,
+        .slide-container[data-image-placement="background"] .slide-text-pane p,
+        .slide-container[data-image-placement="background"] .slide-text-pane li,
+        .slide-container[data-image-placement="background"] .slide-text-pane span,
+        .slide-container[data-image-placement="background"] .slide-text-pane .quote-text,
+        .slide-container[data-image-placement="background"] .slide-text-pane .quote-author {
+            color: var(--text-color-override, inherit) !important;
+        }
+        .slide-container[data-image-placement="background"] .slide-text-pane .slide-heading-subtitle,
+        .slide-container[data-image-placement="background"] .slide-text-pane .slide-content-bullets li::before {
+            color: var(--text-secondary-override, var(--primary-light)) !important;
+        }
+
         /* Print formatting */
         @media print {
             @page {
@@ -1187,7 +1273,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.17";
+        const APP_VERSION = "1.0.18";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -2012,6 +2098,25 @@
                 container.className = `slide-container ${idx === currentSlideIdx ? 'active' : ''}`;
                 container.setAttribute('data-slide', idx + 1);
 
+                // Image styling options
+                const placement = slide.imagePlacement || 'right';
+                const fit = slide.imageFit || 'cover';
+                const position = slide.imagePosition || 'center';
+                const opacity = slide.imageOverlayOpacity || '0';
+                
+                container.setAttribute('data-image-placement', placement);
+                container.setAttribute('data-image-fit', fit);
+                container.setAttribute('data-image-position', position);
+                container.style.setProperty('--image-opacity', opacity);
+                
+                if (parseFloat(opacity) >= 0.4 && (placement === 'background' || slide.layout === 'cover')) {
+                    container.style.setProperty('--text-color-override', '#ffffff');
+                    container.style.setProperty('--text-secondary-override', 'rgba(255, 255, 255, 0.7)');
+                } else {
+                    container.style.removeProperty('--text-color-override');
+                    container.style.removeProperty('--text-secondary-override');
+                }
+
                 let html = "";
 
                 if (slide.layout === 'cover') {
@@ -2415,7 +2520,58 @@
             `;
 
             // Image selection inputs & Upload triggers
+            const placement = slide.imagePlacement || 'right';
+            const fit = slide.imageFit || 'cover';
+            const position = slide.imagePosition || 'center';
+            const opacity = slide.imageOverlayOpacity || '0';
+
             editorHtml += `
+                <div class="editor-group" style="border-top: 1px solid var(--border-color); margin-top:20px; padding-top:15px;">
+                    <label class="editor-label" style="color: var(--primary);">Image Placement &amp; Sizing</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                        <div>
+                            <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Placement</label>
+                            <select class="editor-select" id="edit-image-placement" style="font-size:11px; height:28px;">
+                                <option value="right" ${placement === 'right' ? 'selected' : ''}>Right Split</option>
+                                <option value="left" ${placement === 'left' ? 'selected' : ''}>Left Split</option>
+                                <option value="background" ${placement === 'background' ? 'selected' : ''}>Full Background</option>
+                                <option value="hidden" ${placement === 'hidden' ? 'selected' : ''}>No Image</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Sizing Fit</label>
+                            <select class="editor-select" id="edit-image-fit" style="font-size:11px; height:28px;">
+                                <option value="cover" ${fit === 'cover' ? 'selected' : ''}>Fill / Crop (Cover)</option>
+                                <option value="contain" ${fit === 'contain' ? 'selected' : ''}>Show All (Contain)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Alignment</label>
+                            <select class="editor-select" id="edit-image-position" style="font-size:11px; height:28px;">
+                                <option value="center" ${position === 'center' ? 'selected' : ''}>Center</option>
+                                <option value="top" ${position === 'top' ? 'selected' : ''}>Top</option>
+                                <option value="bottom" ${position === 'bottom' ? 'selected' : ''}>Bottom</option>
+                                <option value="left" ${position === 'left' ? 'selected' : ''}>Left</option>
+                                <option value="right" ${position === 'right' ? 'selected' : ''}>Right</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Overlay Darken</label>
+                            <select class="editor-select" id="edit-image-opacity" style="font-size:11px; height:28px;">
+                                <option value="0" ${opacity === '0' ? 'selected' : ''}>None</option>
+                                <option value="0.1" ${opacity === '0.1' ? 'selected' : ''}>10%</option>
+                                <option value="0.25" ${opacity === '0.25' ? 'selected' : ''}>25%</option>
+                                <option value="0.4" ${opacity === '0.4' ? 'selected' : ''}>40%</option>
+                                <option value="0.55" ${opacity === '0.55' ? 'selected' : ''}>55%</option>
+                                <option value="0.7" ${opacity === '0.7' ? 'selected' : ''}>70%</option>
+                                <option value="0.85" ${opacity === '0.85' ? 'selected' : ''}>85%</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="editor-group" style="border-top: 1px solid var(--border-color); margin-top:20px; padding-top:15px;">
                     <label class="editor-label">Slide Image Path / Data URL</label>
                     <input type="text" class="editor-input" id="edit-slide-bgimage" value="${slide.bgImage || ''}">
@@ -2520,6 +2676,16 @@
             if (nameEl) slide.name = nameEl.value;
             if (bgImageEl) slide.bgImage = bgImageEl.value;
             if (notesEl) slide.notes = notesEl.value;
+
+            const placementEl = document.getElementById('edit-image-placement');
+            const fitEl = document.getElementById('edit-image-fit');
+            const positionEl = document.getElementById('edit-image-position');
+            const opacityEl = document.getElementById('edit-image-opacity');
+
+            if (placementEl) slide.imagePlacement = placementEl.value;
+            if (fitEl) slide.imageFit = fitEl.value;
+            if (positionEl) slide.imagePosition = positionEl.value;
+            if (opacityEl) slide.imageOverlayOpacity = opacityEl.value;
 
             if (slide.layout === 'cover') {
                 const titleEl = document.getElementById('edit-slide-title');

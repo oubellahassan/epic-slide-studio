@@ -1273,7 +1273,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.19";
+        const APP_VERSION = "1.0.20";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {

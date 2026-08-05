@@ -922,9 +922,34 @@
         .slide-container[data-image-placement="background"] .slide-text-pane .quote-author {
             color: var(--text-color-override, inherit) !important;
         }
-        .slide-container[data-image-placement="background"] .slide-text-pane .slide-heading-subtitle,
-        .slide-container[data-image-placement="background"] .slide-text-pane .slide-content-bullets li::before {
-            color: var(--text-secondary-override, var(--primary-light)) !important;
+        .quote-text {
+            white-space: pre-wrap !important;
+        }
+
+        /* Content Font Size scaling overrides */
+        .slide-container[data-text-size="medium"] .quote-text,
+        .slide-container[data-text-size="medium"] .slide-content-bullets li,
+        .slide-container[data-text-size="medium"] p,
+        .slide-container[data-text-size="medium"] li {
+            font-size: 13px !important;
+        }
+        .slide-container[data-text-size="small"] .quote-text,
+        .slide-container[data-text-size="small"] .slide-content-bullets li,
+        .slide-container[data-text-size="small"] p,
+        .slide-container[data-text-size="small"] li {
+            font-size: 11.5px !important;
+        }
+        .slide-container[data-text-size="xsmall"] .quote-text,
+        .slide-container[data-text-size="xsmall"] .slide-content-bullets li,
+        .slide-container[data-text-size="xsmall"] p,
+        .slide-container[data-text-size="xsmall"] li {
+            font-size: 9.5px !important;
+        }
+        
+        /* Enable scroll if text overflows the container vertically */
+        .slide-text-pane {
+            max-height: 100% !important;
+            overflow-y: auto !important;
         }
 
         /* Print formatting */
@@ -1273,7 +1298,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.20";
+        const APP_VERSION = "1.0.21";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -2107,6 +2132,7 @@
                 container.setAttribute('data-image-placement', placement);
                 container.setAttribute('data-image-fit', fit);
                 container.setAttribute('data-image-position', position);
+                container.setAttribute('data-text-size', slide.contentFontSize || 'standard');
                 container.style.setProperty('--image-opacity', opacity);
                 
                 if (parseFloat(opacity) >= 0.4 && (placement === 'background' || slide.layout === 'cover')) {
@@ -2524,10 +2550,11 @@
             const fit = slide.imageFit || 'cover';
             const position = slide.imagePosition || 'center';
             const opacity = slide.imageOverlayOpacity || '0';
+            const fontSize = slide.contentFontSize || 'standard';
 
             editorHtml += `
                 <div class="editor-group" style="border-top: 1px solid var(--border-color); margin-top:20px; padding-top:15px;">
-                    <label class="editor-label" style="color: var(--primary);">Image Placement &amp; Sizing</label>
+                    <label class="editor-label" style="color: var(--primary);">Slide Layout &amp; Font Controls</label>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                         <div>
                             <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Placement</label>
@@ -2546,7 +2573,7 @@
                             </select>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                         <div>
                             <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Alignment</label>
                             <select class="editor-select" id="edit-image-position" style="padding: 6px 10px; font-size: 12px; height: auto;">
@@ -2567,6 +2594,17 @@
                                 <option value="0.55" ${opacity === '0.55' ? 'selected' : ''}>55%</option>
                                 <option value="0.7" ${opacity === '0.7' ? 'selected' : ''}>70%</option>
                                 <option value="0.85" ${opacity === '0.85' ? 'selected' : ''}>85%</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Content Text Size</label>
+                            <select class="editor-select" id="edit-content-font-size" style="padding: 6px 10px; font-size: 12px; height: auto;">
+                                <option value="standard" ${fontSize === 'standard' ? 'selected' : ''}>Standard</option>
+                                <option value="medium" ${fontSize === 'medium' ? 'selected' : ''}>Medium</option>
+                                <option value="small" ${fontSize === 'small' ? 'selected' : ''}>Small</option>
+                                <option value="xsmall" ${fontSize === 'xsmall' ? 'selected' : ''}>Extra Small</option>
                             </select>
                         </div>
                     </div>
@@ -2686,6 +2724,9 @@
             if (fitEl) slide.imageFit = fitEl.value;
             if (positionEl) slide.imagePosition = positionEl.value;
             if (opacityEl) slide.imageOverlayOpacity = opacityEl.value;
+
+            const fontSizeEl = document.getElementById('edit-content-font-size');
+            if (fontSizeEl) slide.contentFontSize = fontSizeEl.value;
 
             if (slide.layout === 'cover') {
                 const titleEl = document.getElementById('edit-slide-title');

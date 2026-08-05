@@ -1273,7 +1273,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.18";
+        const APP_VERSION = "1.0.19";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -2531,7 +2531,7 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                         <div>
                             <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Placement</label>
-                            <select class="editor-select" id="edit-image-placement" style="font-size:11px; height:28px;">
+                            <select class="editor-select" id="edit-image-placement" style="padding: 6px 10px; font-size: 12px; height: auto;">
                                 <option value="right" ${placement === 'right' ? 'selected' : ''}>Right Split</option>
                                 <option value="left" ${placement === 'left' ? 'selected' : ''}>Left Split</option>
                                 <option value="background" ${placement === 'background' ? 'selected' : ''}>Full Background</option>
@@ -2540,7 +2540,7 @@
                         </div>
                         <div>
                             <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Sizing Fit</label>
-                            <select class="editor-select" id="edit-image-fit" style="font-size:11px; height:28px;">
+                            <select class="editor-select" id="edit-image-fit" style="padding: 6px 10px; font-size: 12px; height: auto;">
                                 <option value="cover" ${fit === 'cover' ? 'selected' : ''}>Fill / Crop (Cover)</option>
                                 <option value="contain" ${fit === 'contain' ? 'selected' : ''}>Show All (Contain)</option>
                             </select>
@@ -2549,7 +2549,7 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                         <div>
                             <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Alignment</label>
-                            <select class="editor-select" id="edit-image-position" style="font-size:11px; height:28px;">
+                            <select class="editor-select" id="edit-image-position" style="padding: 6px 10px; font-size: 12px; height: auto;">
                                 <option value="center" ${position === 'center' ? 'selected' : ''}>Center</option>
                                 <option value="top" ${position === 'top' ? 'selected' : ''}>Top</option>
                                 <option value="bottom" ${position === 'bottom' ? 'selected' : ''}>Bottom</option>
@@ -2559,7 +2559,7 @@
                         </div>
                         <div>
                             <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:2px;">Overlay Darken</label>
-                            <select class="editor-select" id="edit-image-opacity" style="font-size:11px; height:28px;">
+                            <select class="editor-select" id="edit-image-opacity" style="padding: 6px 10px; font-size: 12px; height: auto;">
                                 <option value="0" ${opacity === '0' ? 'selected' : ''}>None</option>
                                 <option value="0.1" ${opacity === '0.1' ? 'selected' : ''}>10%</option>
                                 <option value="0.25" ${opacity === '0.25' ? 'selected' : ''}>25%</option>

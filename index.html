@@ -1068,7 +1068,7 @@
             </div>
             
             <div class="sidebar-footer">
-                <p>Designed by Hassan Oubella</p>
+                <p>Designed by Hassan Oubella <span style="font-size:9px; opacity:0.5;" id="footer-version"></span></p>
                 <p>© 2026 Epic Experiences Ltd.</p>
             </div>
         </aside>
@@ -1298,7 +1298,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.21";
+        const APP_VERSION = "1.0.22";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1654,6 +1654,10 @@
 
         // Startup Initialization
         window.addEventListener('DOMContentLoaded', () => {
+            // Display version in footer
+            const footerVer = document.getElementById('footer-version');
+            if (footerVer) footerVer.innerText = `v${APP_VERSION}`;
+
             loadStoredConfig();
             loadStoredPresentation();
             initNavigation();

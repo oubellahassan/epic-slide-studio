@@ -712,6 +712,20 @@
             overflow-y: auto;
             padding-right: 5px;
         }
+        .editor-body::-webkit-scrollbar {
+            width: 8px !important;
+            display: block !important;
+        }
+        .editor-body::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.08) !important;
+            border-radius: var(--radius-sm) !important;
+        }
+        .editor-body::-webkit-scrollbar-thumb {
+            background: var(--primary) !important;
+            border-radius: var(--radius-sm) !important;
+            border: 2px solid transparent !important;
+            background-clip: padding-box !important;
+        }
         .editor-group {
             margin-bottom: 16px;
         }
@@ -1298,7 +1312,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.22";
+        const APP_VERSION = "1.0.23";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {

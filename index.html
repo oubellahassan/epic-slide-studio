@@ -210,6 +210,33 @@
             gap: 12px;
             z-index: 95;
         }
+        #archive-view-banner {
+            position: absolute;
+            top: 82px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 96;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border: 1px solid var(--primary-light);
+            border-radius: var(--radius-md);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            box-shadow: var(--shadow-hover);
+            font: 600 12px var(--font-sans);
+        }
+        body.archive-view-mode #archive-view-banner { display: flex; }
+        body.archive-view-mode #btn-edit,
+        body.archive-view-mode [data-action="openAddSlideModal"],
+        body.archive-view-mode [data-action="openRemindersModal"],
+        body.archive-view-mode [data-action="resetToDefault"],
+        body.archive-view-mode [data-action="openMonthlyArchiveModal"] {
+            opacity: 0.42;
+            pointer-events: none;
+        }
+        body.presentation-mode #archive-view-banner { display: none; }
         .btn {
             background-color: var(--bg-card);
             border: 1px solid var(--border-color);
@@ -990,7 +1017,7 @@
                 width: auto !important;
                 overflow: visible !important;
             }
-            .sidebar, .top-actions, .controls-help, .editor-drawer, .floating-nav-overlay, #print-overlay, .modal-overlay {
+            .sidebar, .top-actions, .controls-help, .editor-drawer, .floating-nav-overlay, #print-overlay, .modal-overlay, #archive-view-banner {
                 display: none !important;
             }
             .stage {
@@ -1076,6 +1103,10 @@
                         <button class="sidebar-btn" data-action="openRemindersModal">🔔 Reminders</button>
                         <button class="sidebar-btn" data-action="print" title="Export deck to PDF">📤 Export PDF</button>
                     </div>
+                    <button class="sidebar-btn" data-action="openMonthlyArchiveModal">💾 Save Presentation</button>
+                    <select id="monthly-archive-select" class="editor-select" aria-label="Previous monthly presentations" style="margin-top:4px;height:34px;font-size:11.5px;padding:5px 8px;">
+                        <option value="">Previous presentations…</option>
+                    </select>
                     <button class="sidebar-btn" style="color: #ff8b8b; margin-top: 4px;" data-action="resetToDefault">🔄 Reset Template</button>
                 </div>
                 
@@ -1109,6 +1140,11 @@
             <button class="btn" data-action="reload" title="Force reload latest app version">
                 <span>🔄</span> Refresh App
             </button>
+        </div>
+
+        <div id="archive-view-banner" role="status">
+            <span id="archive-view-label">Viewing saved presentation — read-only</span>
+            <button type="button" class="editor-btn-sub" data-action="returnToCurrentPresentation" style="padding:6px 10px;">Return to current</button>
         </div>
 
         <!-- Main Slide Stage -->
@@ -1184,6 +1220,24 @@
             <div class="editor-actions-row" style="margin-top:22px;border-top:1px solid var(--border-color);padding-top:16px;">
                 <button type="button" class="editor-btn-sub" data-action="closeAddSlideModal">Cancel</button>
                 <button type="button" class="btn btn-primary" style="flex:1;justify-content:center;" data-action="addNewSlide">＋ Create Slide</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Monthly Presentation Modal -->
+    <div class="modal-overlay" id="monthly-archive-modal">
+        <div class="modal-card">
+            <h3 class="modal-title">Save Monthly Presentation</h3>
+            <p style="font-size:12.5px;line-height:1.55;color:var(--text-secondary);margin:0 0 18px;">
+                A read-only snapshot will be saved first. The working slides will then be cleared for the next month while keeping their design, owners and images.
+            </p>
+            <div class="editor-group">
+                <label class="editor-label" for="monthly-archive-month">Presentation month</label>
+                <input type="month" class="editor-input" id="monthly-archive-month">
+            </div>
+            <div class="editor-actions-row" style="margin-top:22px;border-top:1px solid var(--border-color);padding-top:16px;">
+                <button type="button" class="editor-btn-sub" data-action="closeMonthlyArchiveModal">Cancel</button>
+                <button type="button" class="btn btn-primary" style="flex:1;justify-content:center;" data-action="saveMonthlyPresentation">Save &amp; Start Next Month</button>
             </div>
         </div>
     </div>
@@ -1320,7 +1374,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.31";
+        const APP_VERSION = "1.0.32";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1647,6 +1701,8 @@
         let slidesState = [];
         let isEditing = false;
         let isPresenting = false;
+        let isViewingMonthlyArchive = false;
+        let activeMonthlyArchiveKey = null;
         const isEmbeddedHost = (() => {
             try { return window.self !== window.top; }
             catch (e) { return true; }
@@ -1697,6 +1753,7 @@
             setupStageDragDelegate();
             setupStageClickDelegate();
             setupRecognitionPaste();
+            setupMonthlyArchiveControls();
             
             // Connect to Supabase Cloud Database for real-time collaboration
             initSupabase();
@@ -1718,6 +1775,7 @@
                     supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
                     await syncFromSupabase();
                     subscribeToSupabase();
+                    await loadMonthlyArchives();
                 } catch (e) {
                     console.warn("Supabase connection failed. Falling back to local offline storage.", e);
                 }
@@ -1788,7 +1846,7 @@
 
         // Save current modifications to cloud database
         async function saveToSupabase() {
-            if (!supabaseClient) return;
+            if (isViewingMonthlyArchive || !supabaseClient) return false;
             try {
                 const timestamp = new Date().toISOString();
                 const { error } = await supabaseClient
@@ -1802,11 +1860,14 @@
                 
                 if (!error) {
                     dbLastUpdated = new Date(timestamp).getTime();
+                    return true;
                 } else {
                     console.error("Save to Supabase failed: ", error);
+                    return false;
                 }
             } catch (e) {
                 console.error("Save to Supabase failed: ", e);
+                return false;
             }
         }
 
@@ -1819,6 +1880,7 @@
                     'postgres_changes',
                     { event: 'UPDATE', schema: 'public', table: 'presentation_slides', filter: 'key=eq.epic-progress-deck' },
                     (payload) => {
+                        if (isViewingMonthlyArchive) return;
                         const newRecord = payload.new;
                         
                         const dbVersion = newRecord.config ? newRecord.config.code_version : null;
@@ -1929,6 +1991,10 @@
 
         // Save active state to LocalStorage and trigger Supabase Sync
         function savePresentationState() {
+            if (isViewingMonthlyArchive) {
+                showToast('Saved presentations are read-only.', 'info');
+                return;
+            }
             safeStorage.setItem('epic-presentation-deck', JSON.stringify(slidesState));
             saveToSupabase();
         }
@@ -1940,7 +2006,7 @@
             slidesState.forEach((slide, idx) => {
                 const li = document.createElement('li');
                 li.className = `nav-item ${idx === currentSlideIdx ? 'active' : ''}`;
-                li.setAttribute('draggable', 'true');
+                li.setAttribute('draggable', isViewingMonthlyArchive ? 'false' : 'true');
                 li.innerHTML = `
                     <span class="nav-item-title">${slide.name}</span>
                     <button class="delete-slide-btn" data-delete-idx="${idx}">×</button>
@@ -2349,6 +2415,15 @@
                 const btn = e.target.closest('[data-action]');
                 if (!btn) return;
                 const action = btn.getAttribute('data-action');
+                const archiveBlockedActions = new Set([
+                    'toggleEditor', 'openAddSlideModal', 'addNewSlide', 'openRemindersModal',
+                    'saveMonthlySchedule', 'resetToDefault', 'resetRecognitionSlide',
+                    'moveSlideUp', 'moveSlideDown', 'deleteActiveSlide', 'openMonthlyArchiveModal'
+                ]);
+                if (isViewingMonthlyArchive && archiveBlockedActions.has(action)) {
+                    showToast('Saved presentations are read-only. Return to the current presentation to edit.', 'info');
+                    return;
+                }
                 switch (action) {
                     case 'toggleEditor':            toggleEditor(); break;
                     case 'togglePresentationMode':  togglePresentationMode(); break;
@@ -2367,6 +2442,10 @@
                     case 'moveSlideUp':             moveSlideUp(); break;
                     case 'moveSlideDown':           moveSlideDown(); break;
                     case 'deleteActiveSlide':       deleteActiveSlide(); break;
+                    case 'openMonthlyArchiveModal': openMonthlyArchiveModal(); break;
+                    case 'closeMonthlyArchiveModal': closeMonthlyArchiveModal(); break;
+                    case 'saveMonthlyPresentation': saveMonthlyPresentation(); break;
+                    case 'returnToCurrentPresentation': returnToCurrentPresentation(); break;
                     case 'prevSlide':               e.stopPropagation(); prevSlide(); break;
                     case 'nextSlide':               e.stopPropagation(); nextSlide(); break;
                     case 'recognitionPrev':         e.stopPropagation(); changeRecognitionNomination(btn, -1); break;
@@ -2399,6 +2478,7 @@
             if (!deck) return;
 
             deck.addEventListener('dragover', (e) => {
+                if (isViewingMonthlyArchive) return;
                 const pane = e.target.closest('.slide-drop-target');
                 if (!pane) return;
                 e.preventDefault();
@@ -2413,6 +2493,7 @@
             });
 
             deck.addEventListener('drop', (e) => {
+                if (isViewingMonthlyArchive) return;
                 const pane = e.target.closest('.slide-drop-target');
                 if (!pane) return;
                 e.preventDefault();
@@ -2521,6 +2602,10 @@
 
         // Toggle editor sidebar panel
         function toggleEditor() {
+            if (isViewingMonthlyArchive) {
+                showToast('Saved presentations are read-only.', 'info');
+                return;
+            }
             const drawer = document.getElementById('editor-drawer');
             isEditing = !isEditing;
             
@@ -2829,6 +2914,7 @@
         }
 
         function autoSaveChanges() {
+            if (isViewingMonthlyArchive) return;
             if (slidesState.length === 0) return;
             const slide = slidesState[currentSlideIdx];
 
@@ -2975,6 +3061,7 @@
         }
 
         function deleteSlide(idx) {
+            if (isViewingMonthlyArchive) return;
             slidesState.splice(idx, 1);
             savePresentationState();
             
@@ -3054,6 +3141,235 @@
                 updatePresenterNotes();
                 if (isEditing) loadEditorFields();
                 showToast('↩ Feedback & Recognition slide restored.', 'success');
+            });
+        }
+
+        function setupMonthlyArchiveControls() {
+            const select = document.getElementById('monthly-archive-select');
+            if (!select) return;
+            select.addEventListener('change', async () => {
+                const key = select.value;
+                if (!key) {
+                    if (isViewingMonthlyArchive) await returnToCurrentPresentation();
+                    return;
+                }
+                await openMonthlyArchive(key);
+            });
+        }
+
+        function getLocalMonthValue(date = new Date()) {
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        function formatMonthlyArchiveLabel(monthValue) {
+            const match = /^(\d{4})-(\d{2})$/.exec(monthValue || '');
+            if (!match) return monthValue || 'Saved presentation';
+            const date = new Date(Number(match[1]), Number(match[2]) - 1, 1);
+            return new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(date);
+        }
+
+        function getNextMonthValue(monthValue) {
+            const match = /^(\d{4})-(\d{2})$/.exec(monthValue || '');
+            if (!match) return getLocalMonthValue();
+            const date = new Date(Number(match[1]), Number(match[2]), 1);
+            return getLocalMonthValue(date);
+        }
+
+        function openMonthlyArchiveModal() {
+            if (isViewingMonthlyArchive) return;
+            const input = document.getElementById('monthly-archive-month');
+            if (input) input.value = getLocalMonthValue();
+            document.getElementById('monthly-archive-modal').classList.add('open');
+        }
+
+        function closeMonthlyArchiveModal() {
+            document.getElementById('monthly-archive-modal').classList.remove('open');
+        }
+
+        async function loadMonthlyArchives() {
+            const select = document.getElementById('monthly-archive-select');
+            if (!select) return;
+            const selectedKey = isViewingMonthlyArchive ? activeMonthlyArchiveKey : '';
+            select.innerHTML = '<option value="">Current presentation</option>';
+            if (!supabaseClient) return;
+            try {
+                const { data, error } = await supabaseClient
+                    .from('presentation_slides')
+                    .select('key,config,updated_at')
+                    .like('key', 'epic-progress-archive-%')
+                    .order('key', { ascending: false });
+                if (error) throw error;
+                (data || []).forEach(record => {
+                    const month = record.key.replace('epic-progress-archive-', '');
+                    const option = document.createElement('option');
+                    option.value = record.key;
+                    option.textContent = (record.config && record.config.archive_label) || formatMonthlyArchiveLabel(month);
+                    select.appendChild(option);
+                });
+                select.value = selectedKey || '';
+            } catch (error) {
+                console.error('Could not load monthly presentations:', error);
+            }
+        }
+
+        async function openMonthlyArchive(key) {
+            if (!supabaseClient || !key.startsWith('epic-progress-archive-')) return;
+            try {
+                const { data, error } = await supabaseClient
+                    .from('presentation_slides')
+                    .select('*')
+                    .eq('key', key)
+                    .single();
+                if (error || !data || !Array.isArray(data.slides)) throw error || new Error('Saved presentation is unavailable.');
+                if (isEditing) toggleEditor();
+                isViewingMonthlyArchive = true;
+                activeMonthlyArchiveKey = key;
+                document.body.classList.add('archive-view-mode');
+                slidesState = JSON.parse(JSON.stringify(data.slides));
+                presentationConfig = JSON.parse(JSON.stringify(data.config || {}));
+                ensureConfigDefaults();
+                currentSlideIdx = 0;
+                applyTheme(presentationConfig.theme);
+                applyFont(presentationConfig.font);
+                initNavigation();
+                renderAllSlides();
+                goToSlide(0);
+                const month = key.replace('epic-progress-archive-', '');
+                const label = (data.config && data.config.archive_label) || formatMonthlyArchiveLabel(month);
+                document.getElementById('archive-view-label').textContent = `Viewing ${label} — read-only`;
+                document.getElementById('monthly-archive-select').value = key;
+                showToast(`📂 Viewing ${label} — read-only`, 'info');
+            } catch (error) {
+                console.error('Could not open saved presentation:', error);
+                document.getElementById('monthly-archive-select').value = '';
+                showToast('Could not open that saved presentation.', 'error');
+            }
+        }
+
+        async function returnToCurrentPresentation() {
+            if (!supabaseClient) {
+                showToast('Cloud storage is unavailable. Please try again.', 'error');
+                return;
+            }
+            try {
+                const { data, error } = await supabaseClient
+                    .from('presentation_slides')
+                    .select('*')
+                    .eq('key', 'epic-progress-deck')
+                    .single();
+                if (error || !data || !Array.isArray(data.slides)) throw error || new Error('Current presentation is unavailable.');
+                slidesState = JSON.parse(JSON.stringify(data.slides));
+                presentationConfig = JSON.parse(JSON.stringify(data.config || {}));
+                ensureConfigDefaults();
+                isViewingMonthlyArchive = false;
+                activeMonthlyArchiveKey = null;
+                document.body.classList.remove('archive-view-mode');
+                document.getElementById('monthly-archive-select').value = '';
+                dbLastUpdated = new Date(data.updated_at || 0).getTime();
+                safeStorage.setItem('epic-presentation-deck', JSON.stringify(slidesState));
+                safeStorage.setItem('epic-presentation-config', JSON.stringify(presentationConfig));
+                applyTheme(presentationConfig.theme);
+                applyFont(presentationConfig.font);
+                currentSlideIdx = 0;
+                initNavigation();
+                renderAllSlides();
+                goToSlide(0);
+                showToast('↩ Current presentation restored.', 'success');
+            } catch (error) {
+                console.error('Could not return to current presentation:', error);
+                showToast('Could not restore the current presentation. The saved view remains read-only.', 'error');
+            }
+        }
+
+        function createNextMonthDeck(sourceSlides, nextMonthValue) {
+            const nextSlides = JSON.parse(JSON.stringify(sourceSlides));
+            nextSlides.forEach((slide, index) => {
+                const isCover = index === 0;
+                const isAgenda = slide.layout === 'agenda';
+                const isEnd = index === nextSlides.length - 1;
+                if (isCover) {
+                    slide.date = formatMonthlyArchiveLabel(nextMonthValue);
+                    slide.notes = '';
+                    return;
+                }
+                if (isAgenda || isEnd) return;
+                slide.notes = '';
+                if (['bullet-image', 'tech-layout'].includes(slide.layout)) {
+                    slide.bullets = ['Add this month’s update'];
+                } else if (slide.layout === 'quote') {
+                    slide.quote = '';
+                } else if (slide.layout === 'feedback') {
+                    slide.nominee = '';
+                    slide.nominator = '';
+                    slide.detail = '';
+                    slide.recognitionGroups = [];
+                    slide.recognitionSummary = {};
+                }
+            });
+            return nextSlides;
+        }
+
+        async function saveMonthlyPresentation() {
+            if (isViewingMonthlyArchive) return;
+            const monthInput = document.getElementById('monthly-archive-month');
+            const monthValue = monthInput ? monthInput.value : '';
+            if (!/^\d{4}-\d{2}$/.test(monthValue)) {
+                showToast('Choose the presentation month first.', 'error');
+                return;
+            }
+            if (!supabaseClient) {
+                showToast('Cloud storage is unavailable. Nothing was reset.', 'error');
+                return;
+            }
+            const label = formatMonthlyArchiveLabel(monthValue);
+            const nextMonth = getNextMonthValue(monthValue);
+            showConfirm(`Save ${label} and prepare the working presentation for ${formatMonthlyArchiveLabel(nextMonth)}?`, async () => {
+                const saveButton = document.querySelector('[data-action="saveMonthlyPresentation"]');
+                const originalSlides = JSON.parse(JSON.stringify(slidesState));
+                if (saveButton) saveButton.disabled = true;
+                try {
+                    const timestamp = new Date().toISOString();
+                    const archiveKey = `epic-progress-archive-${monthValue}`;
+                    const archiveConfig = {
+                        ...JSON.parse(JSON.stringify(presentationConfig)),
+                        archive_label: label,
+                        archive_month: monthValue,
+                        archived_at: timestamp,
+                        code_version: APP_VERSION
+                    };
+                    const snapshot = JSON.parse(JSON.stringify(slidesState));
+                    const { error } = await supabaseClient
+                        .from('presentation_slides')
+                        .upsert({
+                            key: archiveKey,
+                            slides: snapshot,
+                            config: archiveConfig,
+                            updated_at: timestamp
+                        }, { onConflict: 'key' });
+                    if (error) throw error;
+
+                    slidesState = createNextMonthDeck(snapshot, nextMonth);
+                    currentSlideIdx = 0;
+                    safeStorage.setItem('epic-presentation-deck', JSON.stringify(slidesState));
+                    const currentSaved = await saveToSupabase();
+                    if (!currentSaved) throw new Error('The archive was saved, but the next-month deck could not be stored.');
+                    closeMonthlyArchiveModal();
+                    initNavigation();
+                    renderAllSlides();
+                    goToSlide(0);
+                    await loadMonthlyArchives();
+                    showToast(`✅ ${label} saved. ${formatMonthlyArchiveLabel(nextMonth)} is ready.`, 'success');
+                } catch (error) {
+                    slidesState = originalSlides;
+                    safeStorage.setItem('epic-presentation-deck', JSON.stringify(slidesState));
+                    initNavigation();
+                    renderAllSlides();
+                    goToSlide(Math.min(currentSlideIdx, Math.max(0, slidesState.length - 1)));
+                    console.error('Monthly presentation save failed:', error);
+                    showToast(error && error.message ? error.message : 'Save failed. The working presentation was not reset.', 'error');
+                } finally {
+                    if (saveButton) saveButton.disabled = false;
+                }
             });
         }
 
@@ -3356,6 +3672,11 @@
                     } else if (e.code === 'KeyN' && isPresenting) {
                         toggleNotesOverlay();
                     } else if (e.code === 'Escape') {
+                        const monthlyArchiveModal = document.getElementById('monthly-archive-modal');
+                        if (monthlyArchiveModal && monthlyArchiveModal.classList.contains('open')) {
+                            closeMonthlyArchiveModal();
+                            return;
+                        }
                         const addSlideModal = document.getElementById('add-slide-modal');
                         if (addSlideModal && addSlideModal.classList.contains('open')) {
                             closeAddSlideModal();

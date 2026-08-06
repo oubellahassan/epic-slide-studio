@@ -1312,7 +1312,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.25";
+        const APP_VERSION = "1.0.26";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1639,6 +1639,7 @@
         let slidesState = [];
         let isEditing = false;
         let isPresenting = false;
+        const recognitionCardPositions = {};
 
         // Presenter Tools variables
         let isLaserActive = false;
@@ -2081,20 +2082,24 @@
             const columns = Math.min(Math.max(groups.length, 1), 4);
             const rows = Math.ceil(groups.length / columns);
             const compact = rows > 1;
-            const cards = groups.map(group => {
+            const cards = groups.map((group, groupIndex) => {
                 const nominations = Array.isArray(group.nominations) ? group.nominations : [];
-                const valueCounts = {};
-                nominations.forEach(nomination => (nomination.values || []).forEach(value => {
-                    const key = value.id || value.label;
-                    if (!valueCounts[key]) valueCounts[key] = { ...value, count: 0 };
-                    valueCounts[key].count++;
-                }));
-                const values = Object.values(valueCounts).map(value => `
+                const positionKey = `${slide.id || currentSlideIdx}:${groupIndex}`;
+                const selectedIndex = Math.min(recognitionCardPositions[positionKey] || 0, Math.max(nominations.length - 1, 0));
+                const selectedNomination = nominations[selectedIndex] || {};
+                const selectedValues = Array.isArray(selectedNomination.values) ? selectedNomination.values : [];
+                const values = selectedValues.map(value => `
                     <span style="display:inline-flex;align-items:center;gap:3px;border-radius:999px;padding:${compact ? '3px 6px' : '4px 8px'};font-size:${compact ? '8px' : '10px'};font-weight:700;color:${escapeHtml(value.color || '#735a36')};background:${escapeHtml(value.color || '#735a36')}14;">
-                        ${escapeHtml(value.emoji || '')} ${escapeHtml(value.label || value.id)}${value.count > 1 ? ` ×${value.count}` : ''}
+                        ${escapeHtml(value.emoji || '')} ${escapeHtml(value.label || value.id)}
                     </span>`).join('');
-                const nominators = Array.isArray(group.nominators) ? group.nominators : [...new Set(nominations.map(item => item.nominator).filter(Boolean))];
                 const initials = String(group.name || '').split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2);
+                const hasMultiple = nominations.length > 1;
+                const navigation = hasMultiple ? `
+                    <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border-color);padding-top:${compact ? '5px' : '8px'};margin-top:${compact ? '5px' : '8px'};">
+                        <button type="button" class="recognition-nav-button" data-action="recognitionPrev" data-group-index="${groupIndex}" aria-label="Previous nomination" style="border:1px solid var(--border-color);background:var(--bg-base);color:var(--primary);border-radius:999px;width:${compact ? '22px' : '28px'};height:${compact ? '22px' : '28px'};cursor:pointer;font-weight:700;">‹</button>
+                        <span style="font-size:${compact ? '7px' : '9px'};color:var(--text-secondary);">${selectedIndex + 1} of ${nominations.length}</span>
+                        <button type="button" class="recognition-nav-button" data-action="recognitionNext" data-group-index="${groupIndex}" aria-label="Next nomination" style="border:1px solid var(--border-color);background:var(--primary);color:white;border-radius:999px;width:${compact ? '22px' : '28px'};height:${compact ? '22px' : '28px'};cursor:pointer;font-weight:700;">›</button>
+                    </div>` : '';
                 return `
                     <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;box-shadow:0 8px 25px rgba(42,37,32,.07);display:flex;flex-direction:column;min-width:0;">
                         <div style="height:5px;background:var(--primary-light);"></div>
@@ -2105,8 +2110,9 @@
                                 <div style="border-radius:999px;padding:5px 8px;background:rgba(115,90,54,.10);color:var(--primary);font-size:${compact ? '8px' : '10px'};font-weight:700;white-space:nowrap;">${Number(group.nominationCount || nominations.length)}×</div>
                             </div>
                             <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:${compact ? '6px' : '11px'};">${values}</div>
-                            <div style="font-family:var(--font-serif);font-size:${compact ? '10px' : '13px'};line-height:1.42;color:var(--text-secondary);flex:1;overflow:hidden;">“${escapeHtml(group.summary || '')}”</div>
-                            <div style="border-top:1px solid var(--border-color);padding-top:${compact ? '5px' : '8px'};margin-top:${compact ? '5px' : '8px'};font-size:${compact ? '7px' : '9px'};line-height:1.3;color:var(--text-secondary);">Nominated by ${escapeHtml(nominators.join(', '))}</div>
+                            <div style="font-family:var(--font-serif);font-size:${compact ? '10px' : '13px'};line-height:1.42;color:var(--text-secondary);flex:1;overflow:auto;min-height:0;padding-right:3px;">“${escapeHtml(selectedNomination.description || group.summary || '')}”</div>
+                            <div style="padding-top:${compact ? '5px' : '8px'};font-size:${compact ? '7px' : '9px'};line-height:1.3;color:var(--text-secondary);">Nominated by ${escapeHtml(selectedNomination.nominator || '')}</div>
+                            ${navigation}
                         </div>
                     </div>`;
             }).join('');
@@ -2347,12 +2353,28 @@
                     case 'deleteActiveSlide':       deleteActiveSlide(); break;
                     case 'prevSlide':               e.stopPropagation(); prevSlide(); break;
                     case 'nextSlide':               e.stopPropagation(); nextSlide(); break;
+                    case 'recognitionPrev':         e.stopPropagation(); changeRecognitionNomination(btn, -1); break;
+                    case 'recognitionNext':         e.stopPropagation(); changeRecognitionNomination(btn, 1); break;
                     case 'toggleLaserPointer':      e.stopPropagation(); toggleLaserPointer(); break;
                     case 'togglePenTool':           e.stopPropagation(); togglePenTool(); break;
                     case 'clearCanvas':             e.stopPropagation(); clearCanvas(); break;
                     case 'toggleNotesOverlay':      e.stopPropagation(); toggleNotesOverlay(); break;
                 }
             });
+        }
+
+        function changeRecognitionNomination(button, direction) {
+            const slide = slidesState[currentSlideIdx];
+            if (!slide || !Array.isArray(slide.recognitionGroups)) return;
+            const groupIndex = Number(button.getAttribute('data-group-index'));
+            const group = slide.recognitionGroups[groupIndex];
+            const nominations = group && Array.isArray(group.nominations) ? group.nominations : [];
+            if (nominations.length < 2) return;
+            const positionKey = `${slide.id || currentSlideIdx}:${groupIndex}`;
+            const current = recognitionCardPositions[positionKey] || 0;
+            recognitionCardPositions[positionKey] = (current + direction + nominations.length) % nominations.length;
+            renderAllSlides();
+            goToSlide(currentSlideIdx);
         }
 
         // Slide-deck level drag-drop delegation — replaces inline ondragover/ondrop on each pane
@@ -2405,6 +2427,7 @@
             stage.addEventListener('click', (event) => {
                 if (isPresenting && !isPenActive
                     && !event.target.closest('.floating-nav-overlay')
+                    && !event.target.closest('.recognition-nav-button')
                     && !event.target.closest('.presenter-notes-modal')) {
                     nextSlide();
                 }

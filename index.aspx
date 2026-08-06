@@ -1312,7 +1312,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.24";
+        const APP_VERSION = "1.0.25";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1711,42 +1711,11 @@
             }
         }
 
-        // Compare versions to detect codebase updates
+        // Teams and embedded browsers may keep an older page cached after deployment.
+        // A database-driven hard reload therefore creates a permanent refresh loop.
+        // Code updates are handled by the explicit "Refresh App" control instead.
         function checkForCodeUpdate(databaseVersion) {
-            if (!databaseVersion) return false;
-            
-            if (databaseVersion !== APP_VERSION) {
-                const localParts = APP_VERSION.split('.').map(Number);
-                const dbParts = databaseVersion.split('.').map(Number);
-                
-                let isDbNewer = false;
-                for (let i = 0; i < Math.max(localParts.length, dbParts.length); i++) {
-                    const l = localParts[i] || 0;
-                    const d = dbParts[i] || 0;
-                    if (d > l) {
-                        isDbNewer = true;
-                        break;
-                    }
-                    if (l > d) {
-                        break;
-                    }
-                }
-                
-                if (isDbNewer) {
-                    const banner = document.getElementById('update-banner');
-                    if (banner) {
-                        banner.style.display = 'flex';
-                    }
-                    setTimeout(() => {
-                        window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
-                    }, 2500);
-                    return true;
-                } else if (APP_VERSION !== databaseVersion) {
-                    // Local code is newer, broadcast this update to database
-                    presentationConfig.code_version = APP_VERSION;
-                    saveToSupabase();
-                }
-            }
+            // Kept as a no-op for compatibility with older saved deck records.
             return false;
         }
 
@@ -1763,7 +1732,6 @@
                 if (error && error.code === 'PGRST116') {
                     // Record doesn't exist yet, seed the database with defaults
                     const timestamp = new Date().toISOString();
-                    presentationConfig.code_version = APP_VERSION;
                     const initialData = {
                         key: 'epic-progress-deck',
                         slides: defaultSlides,
@@ -1807,7 +1775,6 @@
             if (!supabaseClient) return;
             try {
                 const timestamp = new Date().toISOString();
-                presentationConfig.code_version = APP_VERSION;
                 const { error } = await supabaseClient
                     .from('presentation_slides')
                     .update({

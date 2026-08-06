@@ -1320,7 +1320,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.30";
+        const APP_VERSION = "1.0.31";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1647,6 +1647,10 @@
         let slidesState = [];
         let isEditing = false;
         let isPresenting = false;
+        const isEmbeddedHost = (() => {
+            try { return window.self !== window.top; }
+            catch (e) { return true; }
+        })();
         const recognitionCardPositions = {};
 
         // Presenter Tools variables
@@ -3366,6 +3370,9 @@
 
         // Fullscreen Change Listener to capture browser native exits (like pressing Esc)
         function setupFullscreenChangeListener() {
+            // Teams hosts the app inside an iframe. Native fullscreen transitions
+            // can freeze the Teams webview, so embedded presentation is CSS-only.
+            if (isEmbeddedHost) return;
             const handleFsChange = () => {
                 const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
                 if (!isFs && isPresenting) {
@@ -3397,6 +3404,7 @@
             clearCanvas();
             
             const target = document.getElementById('app-container');
+            if (isEmbeddedHost) return;
             try {
                 if (target.requestFullscreen) {
                     const p = target.requestFullscreen();
@@ -3426,6 +3434,7 @@
             if (isNotesOpen) toggleNotesOverlay();
             clearCanvas();
             
+            if (isEmbeddedHost) return;
             try {
                 const fsEl = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullscreenElement || document.msFullscreenElement;
                 if (fsEl) {

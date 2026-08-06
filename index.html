@@ -1312,7 +1312,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.23";
+        const APP_VERSION = "1.0.24";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1683,6 +1683,7 @@
             setupGlobalActionDelegate();
             setupStageDragDelegate();
             setupStageClickDelegate();
+            setupRecognitionPaste();
             
             // Connect to Supabase Cloud Database for real-time collaboration
             initSupabase();
@@ -2108,6 +2109,51 @@
             return escaped;
         }
 
+        function renderRecognitionBoard(slide) {
+            const groups = Array.isArray(slide.recognitionGroups) ? slide.recognitionGroups : [];
+            const columns = Math.min(Math.max(groups.length, 1), 4);
+            const rows = Math.ceil(groups.length / columns);
+            const compact = rows > 1;
+            const cards = groups.map(group => {
+                const nominations = Array.isArray(group.nominations) ? group.nominations : [];
+                const valueCounts = {};
+                nominations.forEach(nomination => (nomination.values || []).forEach(value => {
+                    const key = value.id || value.label;
+                    if (!valueCounts[key]) valueCounts[key] = { ...value, count: 0 };
+                    valueCounts[key].count++;
+                }));
+                const values = Object.values(valueCounts).map(value => `
+                    <span style="display:inline-flex;align-items:center;gap:3px;border-radius:999px;padding:${compact ? '3px 6px' : '4px 8px'};font-size:${compact ? '8px' : '10px'};font-weight:700;color:${escapeHtml(value.color || '#735a36')};background:${escapeHtml(value.color || '#735a36')}14;">
+                        ${escapeHtml(value.emoji || '')} ${escapeHtml(value.label || value.id)}${value.count > 1 ? ` ×${value.count}` : ''}
+                    </span>`).join('');
+                const nominators = Array.isArray(group.nominators) ? group.nominators : [...new Set(nominations.map(item => item.nominator).filter(Boolean))];
+                const initials = String(group.name || '').split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2);
+                return `
+                    <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;box-shadow:0 8px 25px rgba(42,37,32,.07);display:flex;flex-direction:column;min-width:0;">
+                        <div style="height:5px;background:var(--primary-light);"></div>
+                        <div style="padding:${compact ? '12px 14px' : '20px'};display:flex;flex-direction:column;height:100%;box-sizing:border-box;">
+                            <div style="display:flex;align-items:center;gap:10px;margin-bottom:${compact ? '7px' : '13px'};">
+                                <div style="width:${compact ? '34px' : '44px'};height:${compact ? '34px' : '44px'};border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--primary);color:white;font-size:${compact ? '11px' : '14px'};font-weight:700;flex-shrink:0;">${escapeHtml(initials)}</div>
+                                <div style="min-width:0;flex:1;"><div style="font-family:var(--font-sans);font-size:${compact ? '14px' : (columns >= 4 ? '14px' : '18px')};font-weight:700;color:var(--text-primary);white-space:nowrap;">${escapeHtml(group.name)}</div><div style="font-size:${compact ? '8px' : '10px'};color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${escapeHtml(group.department || 'Epic Travel')}</div></div>
+                                <div style="border-radius:999px;padding:5px 8px;background:rgba(115,90,54,.10);color:var(--primary);font-size:${compact ? '8px' : '10px'};font-weight:700;white-space:nowrap;">${Number(group.nominationCount || nominations.length)}×</div>
+                            </div>
+                            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:${compact ? '6px' : '11px'};">${values}</div>
+                            <div style="font-family:var(--font-serif);font-size:${compact ? '10px' : '13px'};line-height:1.42;color:var(--text-secondary);flex:1;overflow:hidden;">“${escapeHtml(group.summary || '')}”</div>
+                            <div style="border-top:1px solid var(--border-color);padding-top:${compact ? '5px' : '8px'};margin-top:${compact ? '5px' : '8px'};font-size:${compact ? '7px' : '9px'};line-height:1.3;color:var(--text-secondary);">Nominated by ${escapeHtml(nominators.join(', '))}</div>
+                        </div>
+                    </div>`;
+            }).join('');
+            return `
+                <div style="width:100%;height:100%;padding:42px 48px 32px;box-sizing:border-box;background:var(--bg-base);display:flex;flex-direction:column;">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;">
+                        <div><div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary-light);margin-bottom:6px;">Recognition</div><h1 style="font-family:var(--font-sans);font-size:34px;line-height:1.05;color:var(--text-primary);margin:0;">${escapeHtml(slide.title || 'Feedback & recognition')}</h1><div style="font-size:12px;color:var(--text-secondary);margin-top:7px;">${groups.reduce((sum, group) => sum + Number(group.nominationCount || 0), 0)} nominations · ${groups.length} remarkable people</div></div>
+                        <div style="width:52px;height:52px;border-radius:16px;background:var(--primary);display:flex;align-items:center;justify-content:center;color:white;font-size:26px;">★</div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr));gap:${compact ? '10px' : '16px'};flex:1;min-height:0;">${cards}</div>
+                    <div style="display:flex;justify-content:space-between;margin-top:14px;font-size:8px;color:var(--text-secondary);"><span>Full nomination descriptions are stored with this slide.</span><span>EPIC TRAVEL</span></div>
+                </div>`;
+        }
+
         // Render all slides into the DOM
         function renderAllSlides() {
             const deck = document.getElementById('slide-deck');
@@ -2270,7 +2316,10 @@
                         </div>
                     `;
                 } else if (slide.layout === 'feedback') {
-                    html = `
+                    if (Array.isArray(slide.recognitionGroups) && slide.recognitionGroups.length) {
+                        html = renderRecognitionBoard(slide);
+                    } else {
+                        html = `
                         <div class="slide-split-wrapper">
                             <div class="slide-text-pane">
                                 <div class="slide-title-header">
@@ -2295,6 +2344,7 @@
                             </div>
                         </div>
                     `;
+                    }
                 }
 
                 container.innerHTML = html;
@@ -2390,6 +2440,51 @@
                     && !event.target.closest('.floating-nav-overlay')
                     && !event.target.closest('.presenter-notes-modal')) {
                     nextSlide();
+                }
+            });
+        }
+
+        // Paste a Recognition package copied from Weave. It updates the existing
+        // Recognition slide, so repeated imports never create duplicate slides.
+        function setupRecognitionPaste() {
+            document.addEventListener('paste', (event) => {
+                const text = event.clipboardData && event.clipboardData.getData('text/plain');
+                if (!text || !text.startsWith('EPIC_RECOGNITION_V1\n')) return;
+                event.preventDefault();
+                try {
+                    const payload = JSON.parse(text.slice('EPIC_RECOGNITION_V1\n'.length));
+                    if (payload.type !== 'epic-recognition' || !Array.isArray(payload.nominees) || !payload.nominees.length) throw new Error('Invalid Recognition package');
+
+                    let targetIndex = slidesState.findIndex(slide => slide.layout === 'feedback');
+                    const importedSlide = {
+                        id: targetIndex >= 0 ? slidesState[targetIndex].id : 'recognition-' + Date.now(),
+                        name: 'Feedback & Recognition',
+                        layout: 'feedback',
+                        speaker: 'Team',
+                        title: payload.title || 'Feedback & recognition',
+                        subtitle: 'Recognition',
+                        recognitionGroups: payload.nominees,
+                        recognitionImportedAt: payload.createdAt || new Date().toISOString(),
+                        bgImage: targetIndex >= 0 ? (slidesState[targetIndex].bgImage || '') : '',
+                        notes: 'Recognition overview imported from Weave. Full original descriptions and their individual value categories are stored in the recognitionGroups data on this slide.'
+                    };
+
+                    if (targetIndex >= 0) {
+                        slidesState[targetIndex] = { ...slidesState[targetIndex], ...importedSlide };
+                    } else {
+                        targetIndex = Math.max(slidesState.length - 1, 0);
+                        slidesState.splice(targetIndex, 0, importedSlide);
+                    }
+                    currentSlideIdx = targetIndex;
+                    savePresentationState();
+                    initNavigation();
+                    renderAllSlides();
+                    goToSlide(targetIndex);
+                    if (isEditing) loadEditorFields();
+                    showToast(`✅ Recognition slide updated: ${payload.nominees.length} nominees`, 'success');
+                } catch (error) {
+                    console.error('Recognition import failed:', error);
+                    showToast('⚠️ Could not import Recognition data.', 'error');
                 }
             });
         }

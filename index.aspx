@@ -837,6 +837,8 @@
             display: none;
             align-items: center;
             justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
         }
         .modal-overlay.open {
             display: flex;
@@ -848,6 +850,9 @@
             width: 400px;
             box-shadow: var(--shadow-hover);
             border: 1px solid var(--border-color);
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            box-sizing: border-box;
         }
         .modal-title {
             font-family: var(--font-serif);
@@ -1315,7 +1320,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.28";
+        const APP_VERSION = "1.0.30";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1765,7 +1770,10 @@
                         
                         applyTheme(presentationConfig.theme);
                         applyFont(presentationConfig.font);
+                        safeStorage.setItem('epic-presentation-deck', JSON.stringify(slidesState));
+                        safeStorage.setItem('epic-presentation-config', JSON.stringify(presentationConfig));
                         initNavigation();
+                        renderAllSlides();
                         goToSlide(currentSlideIdx);
                     }
                 }
@@ -3344,6 +3352,11 @@
                     } else if (e.code === 'KeyN' && isPresenting) {
                         toggleNotesOverlay();
                     } else if (e.code === 'Escape') {
+                        const addSlideModal = document.getElementById('add-slide-modal');
+                        if (addSlideModal && addSlideModal.classList.contains('open')) {
+                            closeAddSlideModal();
+                            return;
+                        }
                         if (isPresenting) togglePresentationMode();
                         if (isEditing) toggleEditor();
                     }

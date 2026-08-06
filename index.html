@@ -1176,6 +1176,9 @@
                     <option value="feedback">Recognition / Value Card</option>
                 </select>
             </div>
+            <div class="editor-actions-row" style="margin-top:22px;border-top:1px solid var(--border-color);padding-top:16px;">
+                <button type="button" class="editor-btn-sub" data-action="closeAddSlideModal">Cancel</button>
+                <button type="button" class="btn btn-primary" style="flex:1;justify-content:center;" data-action="addNewSlide">＋ Create Slide</button>
             </div>
         </div>
     </div>
@@ -1312,7 +1315,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.27";
+        const APP_VERSION = "1.0.28";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -2348,6 +2351,7 @@
                     case 'sendInstantReminder':     sendInstantReminder(); break;
                     case 'saveMonthlySchedule':     saveMonthlySchedule(); break;
                     case 'resetToDefault':          resetToDefault(); break;
+                    case 'resetRecognitionSlide':   resetRecognitionSlide(); break;
                     case 'moveSlideUp':             moveSlideUp(); break;
                     case 'moveSlideDown':           moveSlideDown(); break;
                     case 'deleteActiveSlide':       deleteActiveSlide(); break;
@@ -2636,6 +2640,12 @@
                     <div class="editor-group">
                         <label class="editor-label">Details / Contribution</label>
                         <textarea class="editor-textarea" id="edit-slide-detail">${slide.detail || ''}</textarea>
+                    </div>
+                    <div class="editor-group" style="border-top:1px solid var(--border-color);margin-top:20px;padding-top:15px;">
+                        <button type="button" class="btn" style="width:100%;border-color:var(--primary-light);color:var(--primary);justify-content:center;" data-action="resetRecognitionSlide">
+                            ↩ Reset Feedback &amp; Recognition Slide
+                        </button>
+                        <div style="font-size:10px;line-height:1.4;color:var(--text-secondary);margin-top:7px;">Only this recognition slide will be restored. Every other slide stays unchanged.</div>
                     </div>
                 `;
             }
@@ -3000,6 +3010,38 @@
                 updatePresenterNotes();
                 if (isEditing) loadEditorFields();
                 showToast('🔄 Default template restored!', 'info');
+            });
+        }
+
+        // Restore only the active Feedback & Recognition slide. No other slide
+        // object, position, or content is changed.
+        function resetRecognitionSlide() {
+            const activeSlide = slidesState[currentSlideIdx];
+            if (!activeSlide || activeSlide.layout !== 'feedback') {
+                showToast('Open the Feedback & Recognition slide first.', 'info');
+                return;
+            }
+
+            const defaultRecognition = defaultSlides.find(slide => slide.layout === 'feedback');
+            if (!defaultRecognition) return;
+
+            showConfirm('Reset only this Feedback & Recognition slide? All other slides will remain unchanged.', () => {
+                const activeId = activeSlide.id;
+                slidesState[currentSlideIdx] = {
+                    ...JSON.parse(JSON.stringify(defaultRecognition)),
+                    id: activeId
+                };
+                Object.keys(recognitionCardPositions)
+                    .filter(key => key.startsWith(`${activeId}:`))
+                    .forEach(key => delete recognitionCardPositions[key]);
+
+                savePresentationState();
+                initNavigation();
+                renderAllSlides();
+                goToSlide(currentSlideIdx);
+                updatePresenterNotes();
+                if (isEditing) loadEditorFields();
+                showToast('↩ Feedback & Recognition slide restored.', 'success');
             });
         }
 

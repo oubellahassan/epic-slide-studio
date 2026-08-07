@@ -706,6 +706,26 @@
             border-radius: 0;
             box-shadow: none;
         }
+        #presentation-start-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.72);
+            backdrop-filter: blur(8px);
+        }
+        #presentation-start-overlay.open { display: flex; }
+        #presentation-start-overlay .presentation-start-card {
+            width: min(420px, calc(100vw - 40px));
+            padding: 30px;
+            border-radius: 16px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            text-align: center;
+            box-shadow: 0 24px 70px rgba(0,0,0,0.45);
+        }
 
         /* Interactive Editor Side-Drawer */
         .editor-drawer {
@@ -1147,6 +1167,14 @@
             <button type="button" class="editor-btn-sub" data-action="returnToCurrentPresentation" style="padding:6px 10px;">Return to current</button>
         </div>
 
+        <div id="presentation-start-overlay">
+            <div class="presentation-start-card">
+                <h3 style="margin:0 0 10px;font:600 24px var(--font-serif);">Presentation ready</h3>
+                <p style="margin:0 0 22px;color:var(--text-secondary);font-size:13px;line-height:1.55;">Start full screen in this separate window. When you exit, Microsoft Teams remains open and responsive.</p>
+                <button type="button" class="btn btn-primary" data-action="startFullscreenPresentation" style="width:100%;justify-content:center;">🖥️ Start Full Screen</button>
+            </div>
+        </div>
+
         <!-- Main Slide Stage -->
         <main class="stage" id="stage">
             <div class="slide-deck" id="slide-deck">
@@ -1374,7 +1402,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.32";
+        const APP_VERSION = "1.0.33";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1707,6 +1735,8 @@
             try { return window.self !== window.top; }
             catch (e) { return true; }
         })();
+        const launchParams = new URLSearchParams(window.location.search);
+        const isPresentationWindow = launchParams.get('present') === '1';
         const recognitionCardPositions = {};
 
         // Presenter Tools variables
@@ -1756,7 +1786,7 @@
             setupMonthlyArchiveControls();
             
             // Connect to Supabase Cloud Database for real-time collaboration
-            initSupabase();
+            initSupabase().finally(initializeRequestedPresentation);
 
             // Initialize auto-save event listeners
             initEditorAutoSave();
@@ -2427,6 +2457,7 @@
                 switch (action) {
                     case 'toggleEditor':            toggleEditor(); break;
                     case 'togglePresentationMode':  togglePresentationMode(); break;
+                    case 'startFullscreenPresentation': startFullscreenPresentation(); break;
                     case 'print':                   exportPdf(); break;
                     case 'reload':                  window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now(); break;
                     case 'toggleTheme':             toggleTheme(); break;
@@ -3708,11 +3739,69 @@
 
         // Toggle presentation mode wrapper called by both keyboard and action delegate
         function togglePresentationMode() {
+            if (isEmbeddedHost && !isPresentationWindow) {
+                openTeamsPresentationWindow();
+                return;
+            }
             if (isPresenting) { exitPresentationMode(); } else { enterPresentationMode(); }
         }
 
+        function openTeamsPresentationWindow() {
+            const params = new URLSearchParams();
+            params.set('present', '1');
+            params.set('v', APP_VERSION);
+            if (isViewingMonthlyArchive && activeMonthlyArchiveKey) {
+                params.set('archive', activeMonthlyArchiveKey);
+            }
+            const presentationUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+            const presentationWindow = window.open(
+                presentationUrl,
+                'epic-slide-presentation',
+                `popup=yes,width=${screen.availWidth},height=${screen.availHeight},left=0,top=0`
+            );
+            if (!presentationWindow) {
+                showToast('Please allow pop-ups for Epic Slide Studio to present safely.', 'error');
+                return;
+            }
+            showToast('🖥️ Presentation opened separately. Teams will remain available.', 'success');
+        }
+
+        async function initializeRequestedPresentation() {
+            if (!isPresentationWindow) return;
+            const archiveKey = launchParams.get('archive');
+            if (archiveKey) await openMonthlyArchive(archiveKey);
+            enterPresentationMode(false);
+            const overlay = document.getElementById('presentation-start-overlay');
+            if (overlay) overlay.classList.add('open');
+        }
+
+        function requestAppFullscreen() {
+            const target = document.getElementById('app-container');
+            if (!target) return Promise.resolve();
+            try {
+                if (target.requestFullscreen) return target.requestFullscreen();
+                if (target.webkitRequestFullscreen) return target.webkitRequestFullscreen();
+                if (target.msRequestFullscreen) return target.msRequestFullscreen();
+            } catch (error) {
+                console.error('Fullscreen request failed:', error);
+            }
+            return Promise.resolve();
+        }
+
+        function startFullscreenPresentation() {
+            const overlay = document.getElementById('presentation-start-overlay');
+            if (overlay) overlay.classList.remove('open');
+            const request = requestAppFullscreen();
+            if (request && request.catch) {
+                request.catch(() => {
+                    if (overlay) overlay.classList.add('open');
+                    showToast('Full screen was blocked. Click Start Full Screen again.', 'info');
+                });
+            }
+        }
+
         // Toggle presentation view
-        function enterPresentationMode() {
+        function enterPresentationMode(requestFullscreen = true) {
             isPresenting = true;
             document.body.classList.add('presentation-mode');
             const btn = document.getElementById('btn-present');
@@ -3724,21 +3813,10 @@
             // Clean up drawing state on launch
             clearCanvas();
             
-            const target = document.getElementById('app-container');
             if (isEmbeddedHost) return;
-            try {
-                if (target.requestFullscreen) {
-                    const p = target.requestFullscreen();
-                    if (p && p.catch) p.catch(() => {});
-                } else if (target.webkitRequestFullscreen) {
-                    const p = target.webkitRequestFullscreen();
-                    if (p && p.catch) p.catch(() => {});
-                } else if (target.msRequestFullscreen) {
-                    const p = target.msRequestFullscreen();
-                    if (p && p.catch) p.catch(() => {});
-                }
-            } catch(e) {
-                console.error("Fullscreen request failed: ", e);
+            if (requestFullscreen) {
+                const request = requestAppFullscreen();
+                if (request && request.catch) request.catch(() => {});
             }
         }
 
@@ -3775,6 +3853,9 @@
                 }
             } catch(e) {
                 console.error("Fullscreen exit failed: ", e);
+            }
+            if (isPresentationWindow && window.opener) {
+                setTimeout(() => window.close(), 120);
             }
         }
 

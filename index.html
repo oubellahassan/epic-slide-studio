@@ -706,26 +706,6 @@
             border-radius: 0;
             box-shadow: none;
         }
-        #presentation-start-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 100000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0, 0, 0, 0.72);
-            backdrop-filter: blur(8px);
-        }
-        #presentation-start-overlay.open { display: flex; }
-        #presentation-start-overlay .presentation-start-card {
-            width: min(420px, calc(100vw - 40px));
-            padding: 30px;
-            border-radius: 16px;
-            background: var(--bg-card);
-            color: var(--text-primary);
-            text-align: center;
-            box-shadow: 0 24px 70px rgba(0,0,0,0.45);
-        }
 
         /* Interactive Editor Side-Drawer */
         .editor-drawer {
@@ -1167,14 +1147,6 @@
             <button type="button" class="editor-btn-sub" data-action="returnToCurrentPresentation" style="padding:6px 10px;">Return to current</button>
         </div>
 
-        <div id="presentation-start-overlay">
-            <div class="presentation-start-card">
-                <h3 style="margin:0 0 10px;font:600 24px var(--font-serif);">Presentation ready</h3>
-                <p style="margin:0 0 22px;color:var(--text-secondary);font-size:13px;line-height:1.55;">Start full screen in this separate window. When you exit, Microsoft Teams remains open and responsive.</p>
-                <button type="button" class="btn btn-primary" data-action="startFullscreenPresentation" style="width:100%;justify-content:center;">🖥️ Start Full Screen</button>
-            </div>
-        </div>
-
         <!-- Main Slide Stage -->
         <main class="stage" id="stage">
             <div class="slide-deck" id="slide-deck">
@@ -1399,10 +1371,12 @@
 </div> <!-- Closes app-container -->
 
     <!-- Supabase Client CDN Library -->
+    <script src="https://res.cdn.office.net/teams-js/2.53.1/js/MicrosoftTeams.min.js" integrity="sha384-PIuQ2V7hlz4b1x3G1mPCYYZiWTjxzRTL6bf547xR9ARsAeNv2DAzti86LQnFCwlo" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.33";
+        const APP_VERSION = "1.0.34";
+        const TEAMS_APP_ID = "d17b5e40-fa6e-444a-aeb8-c04746f14798";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
         window.addEventListener('error', (e) => {
@@ -1737,6 +1711,7 @@
         })();
         const launchParams = new URLSearchParams(window.location.search);
         const isPresentationWindow = launchParams.get('present') === '1';
+        let teamsSdkInitPromise = null;
         const recognitionCardPositions = {};
 
         // Presenter Tools variables
@@ -1784,6 +1759,7 @@
             setupStageClickDelegate();
             setupRecognitionPaste();
             setupMonthlyArchiveControls();
+            initializeTeamsSdk();
             
             // Connect to Supabase Cloud Database for real-time collaboration
             initSupabase().finally(initializeRequestedPresentation);
@@ -2457,7 +2433,6 @@
                 switch (action) {
                     case 'toggleEditor':            toggleEditor(); break;
                     case 'togglePresentationMode':  togglePresentationMode(); break;
-                    case 'startFullscreenPresentation': startFullscreenPresentation(); break;
                     case 'print':                   exportPdf(); break;
                     case 'reload':                  window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now(); break;
                     case 'toggleTheme':             toggleTheme(); break;
@@ -3740,13 +3715,31 @@
         // Toggle presentation mode wrapper called by both keyboard and action delegate
         function togglePresentationMode() {
             if (isEmbeddedHost && !isPresentationWindow) {
-                openTeamsPresentationWindow();
+                openTeamsStageView();
                 return;
             }
             if (isPresenting) { exitPresentationMode(); } else { enterPresentationMode(); }
         }
 
-        function openTeamsPresentationWindow() {
+        function initializeTeamsSdk() {
+            if (!isEmbeddedHost || !window.microsoftTeams || !window.microsoftTeams.app) {
+                return Promise.resolve(false);
+            }
+            if (!teamsSdkInitPromise) {
+                teamsSdkInitPromise = window.microsoftTeams.app.initialize()
+                    .then(() => {
+                        if (window.microsoftTeams.app.notifySuccess) window.microsoftTeams.app.notifySuccess();
+                        return true;
+                    })
+                    .catch((error) => {
+                        console.error('Teams SDK initialization failed:', error);
+                        return false;
+                    });
+            }
+            return teamsSdkInitPromise;
+        }
+
+        async function openTeamsStageView() {
             const params = new URLSearchParams();
             params.set('present', '1');
             params.set('v', APP_VERSION);
@@ -3754,16 +3747,25 @@
                 params.set('archive', activeMonthlyArchiveKey);
             }
             const presentationUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-            const presentationWindow = window.open(
-                presentationUrl,
-                'epic-slide-presentation',
-                `popup=yes,width=${screen.availWidth},height=${screen.availHeight},left=0,top=0`
-            );
-            if (!presentationWindow) {
-                showToast('Please allow pop-ups for Epic Slide Studio to present safely.', 'error');
-                return;
+            const teamsReady = await initializeTeamsSdk();
+            if (teamsReady) {
+                try {
+                    const context = {
+                        appId: TEAMS_APP_ID,
+                        contentUrl: presentationUrl,
+                        websiteUrl: presentationUrl,
+                        name: 'Epic Slide Studio Presentation',
+                        openMode: 'popout'
+                    };
+                    const deepLink = `https://teams.microsoft.com/l/stage/${TEAMS_APP_ID}/0?context=${encodeURIComponent(JSON.stringify(context))}`;
+                    await window.microsoftTeams.app.openLink(deepLink);
+                    return;
+                } catch (error) {
+                    console.error('Teams Stageview failed:', error);
+                }
             }
-            showToast('🖥️ Presentation opened separately. Teams will remain available.', 'success');
+            const fallbackWindow = window.open(presentationUrl, 'epic-slide-presentation');
+            if (!fallbackWindow) showToast('Unable to open presentation view.', 'error');
         }
 
         async function initializeRequestedPresentation() {
@@ -3771,8 +3773,6 @@
             const archiveKey = launchParams.get('archive');
             if (archiveKey) await openMonthlyArchive(archiveKey);
             enterPresentationMode(false);
-            const overlay = document.getElementById('presentation-start-overlay');
-            if (overlay) overlay.classList.add('open');
         }
 
         function requestAppFullscreen() {
@@ -3786,18 +3786,6 @@
                 console.error('Fullscreen request failed:', error);
             }
             return Promise.resolve();
-        }
-
-        function startFullscreenPresentation() {
-            const overlay = document.getElementById('presentation-start-overlay');
-            if (overlay) overlay.classList.remove('open');
-            const request = requestAppFullscreen();
-            if (request && request.catch) {
-                request.catch(() => {
-                    if (overlay) overlay.classList.add('open');
-                    showToast('Full screen was blocked. Click Start Full Screen again.', 'info');
-                });
-            }
         }
 
         // Toggle presentation view
@@ -3833,7 +3821,12 @@
             if (isNotesOpen) toggleNotesOverlay();
             clearCanvas();
             
-            if (isEmbeddedHost) return;
+            if (isEmbeddedHost) {
+                if (isPresentationWindow && window.microsoftTeams && window.microsoftTeams.stageView && window.microsoftTeams.stageView.self) {
+                    window.microsoftTeams.stageView.self.close().catch(error => console.error('Stageview close failed:', error));
+                }
+                return;
+            }
             try {
                 const fsEl = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullscreenElement || document.msFullscreenElement;
                 if (fsEl) {
@@ -3854,9 +3847,7 @@
             } catch(e) {
                 console.error("Fullscreen exit failed: ", e);
             }
-            if (isPresentationWindow && window.opener) {
-                setTimeout(() => window.close(), 120);
-            }
+            if (isPresentationWindow) setTimeout(() => window.close(), 120);
         }
 
         // Theme Toggle Function (Simple dark/light helper button)

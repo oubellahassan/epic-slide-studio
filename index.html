@@ -1103,6 +1103,7 @@
                         <button class="sidebar-btn" data-action="openRemindersModal">🔔 Reminders</button>
                         <button class="sidebar-btn" data-action="print" title="Export deck to PDF">📤 Export PDF</button>
                     </div>
+                    <button class="sidebar-btn" data-action="openRecognitionImportModal">📋 Import Recognition</button>
                     <button class="sidebar-btn" data-action="openMonthlyArchiveModal">💾 Save Presentation</button>
                     <select id="monthly-archive-select" class="editor-select" aria-label="Previous monthly presentations" style="margin-top:4px;height:34px;font-size:11.5px;padding:5px 8px;">
                         <option value="">Previous presentations…</option>
@@ -1220,6 +1221,24 @@
             <div class="editor-actions-row" style="margin-top:22px;border-top:1px solid var(--border-color);padding-top:16px;">
                 <button type="button" class="editor-btn-sub" data-action="closeAddSlideModal">Cancel</button>
                 <button type="button" class="btn btn-primary" style="flex:1;justify-content:center;" data-action="addNewSlide">＋ Create Slide</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recognition Import Modal -->
+    <div class="modal-overlay" id="recognition-import-modal">
+        <div class="modal-card">
+            <h3 class="modal-title">Import Recognition</h3>
+            <p style="font-size:12.5px;line-height:1.55;color:var(--text-secondary);margin:0 0 18px;">
+                Copy the recognition slide data in Weave, paste it below, then select Import. Existing recognition content will be updated without changing any other slide.
+            </p>
+            <div class="editor-group">
+                <label class="editor-label" for="recognition-import-text">Recognition data</label>
+                <textarea class="editor-textarea" id="recognition-import-text" rows="8" placeholder="Paste the recognition package here…"></textarea>
+            </div>
+            <div class="editor-actions-row" style="margin-top:22px;border-top:1px solid var(--border-color);padding-top:16px;">
+                <button type="button" class="editor-btn-sub" data-action="closeRecognitionImportModal">Cancel</button>
+                <button type="button" class="btn btn-primary" style="flex:1;justify-content:center;" data-action="importRecognitionFromModal">📋 Import</button>
             </div>
         </div>
     </div>
@@ -1375,7 +1394,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        const APP_VERSION = "1.0.34";
+        const APP_VERSION = "1.0.35";
         const TEAMS_APP_ID = "d17b5e40-fa6e-444a-aeb8-c04746f14798";
 
         // Global Error loggers to catch hidden iframe bugs and display as Toast
@@ -2424,7 +2443,8 @@
                 const archiveBlockedActions = new Set([
                     'toggleEditor', 'openAddSlideModal', 'addNewSlide', 'openRemindersModal',
                     'saveMonthlySchedule', 'resetToDefault', 'resetRecognitionSlide',
-                    'moveSlideUp', 'moveSlideDown', 'deleteActiveSlide', 'openMonthlyArchiveModal'
+                    'moveSlideUp', 'moveSlideDown', 'deleteActiveSlide', 'openMonthlyArchiveModal',
+                    'openRecognitionImportModal', 'importRecognitionFromModal'
                 ]);
                 if (isViewingMonthlyArchive && archiveBlockedActions.has(action)) {
                     showToast('Saved presentations are read-only. Return to the current presentation to edit.', 'info');
@@ -2439,6 +2459,9 @@
                     case 'openAddSlideModal':       openAddSlideModal(); break;
                     case 'closeAddSlideModal':      closeAddSlideModal(); break;
                     case 'addNewSlide':             addNewSlide(); break;
+                    case 'openRecognitionImportModal': openRecognitionImportModal(); break;
+                    case 'closeRecognitionImportModal': closeRecognitionImportModal(); break;
+                    case 'importRecognitionFromModal': importRecognitionFromModal(); break;
                     case 'openRemindersModal':      openRemindersModal(); break;
                     case 'closeRemindersModal':     closeRemindersModal(); break;
                     case 'sendInstantReminder':     sendInstantReminder(); break;
@@ -2537,47 +2560,100 @@
             });
         }
 
-        // Paste a Recognition package copied from Weave. It updates the existing
-        // Recognition slide, so repeated imports never create duplicate slides.
+        function parseRecognitionClipboardText(rawText) {
+            const normalized = String(rawText || '')
+                .replace(/^\uFEFF/, '')
+                .replace(/\r\n?/g, '\n')
+                .trim();
+            if (!normalized) return null;
+
+            const marker = 'EPIC_RECOGNITION_V1';
+            let jsonText = normalized.startsWith(marker)
+                ? normalized.slice(marker.length).trim()
+                : normalized;
+            if (!jsonText.startsWith('{')) return null;
+
+            const payload = JSON.parse(jsonText);
+            if (payload.type !== 'epic-recognition' || !Array.isArray(payload.nominees) || !payload.nominees.length) {
+                throw new Error('Invalid Recognition package');
+            }
+            return payload;
+        }
+
+        function importRecognitionPayload(payload) {
+            if (isViewingMonthlyArchive) {
+                showToast('Saved presentations are read-only. Return to the current presentation to import.', 'info');
+                return false;
+            }
+            let targetIndex = slidesState.findIndex(slide => slide.layout === 'feedback');
+            const importedSlide = {
+                id: targetIndex >= 0 ? slidesState[targetIndex].id : 'recognition-' + Date.now(),
+                name: 'Feedback & Recognition',
+                layout: 'feedback',
+                speaker: 'Team',
+                title: payload.title || 'Feedback & recognition',
+                subtitle: 'Recognition',
+                recognitionGroups: payload.nominees,
+                recognitionImportedAt: payload.createdAt || new Date().toISOString(),
+                bgImage: targetIndex >= 0 ? (slidesState[targetIndex].bgImage || '') : '',
+                notes: 'Recognition overview imported from Weave. Full original descriptions and their individual value categories are stored in the recognitionGroups data on this slide.'
+            };
+            if (targetIndex >= 0) slidesState[targetIndex] = { ...slidesState[targetIndex], ...importedSlide };
+            else {
+                targetIndex = Math.max(slidesState.length - 1, 0);
+                slidesState.splice(targetIndex, 0, importedSlide);
+            }
+            currentSlideIdx = targetIndex;
+            savePresentationState();
+            initNavigation();
+            renderAllSlides();
+            goToSlide(targetIndex);
+            if (isEditing) loadEditorFields();
+            closeRecognitionImportModal();
+            showToast(`✅ Recognition slide updated: ${payload.nominees.length} nominees`, 'success');
+            return true;
+        }
+
+        function openRecognitionImportModal() {
+            const field = document.getElementById('recognition-import-text');
+            field.value = '';
+            document.getElementById('recognition-import-modal').classList.add('open');
+            setTimeout(() => field.focus(), 0);
+        }
+
+        function closeRecognitionImportModal() {
+            document.getElementById('recognition-import-modal').classList.remove('open');
+        }
+
+        function importRecognitionFromModal() {
+            try {
+                const payload = parseRecognitionClipboardText(document.getElementById('recognition-import-text').value);
+                if (!payload) throw new Error('Recognition package not found');
+                importRecognitionPayload(payload);
+            } catch (error) {
+                console.error('Recognition import failed:', error);
+                showToast('⚠️ Recognition data is incomplete. Copy it again from Weave and retry.', 'error');
+            }
+        }
+
+        // Supports LF, Windows CRLF, same-line marker, leading whitespace/BOM,
+        // and raw recognition JSON if a host strips the clipboard marker.
         function setupRecognitionPaste() {
             document.addEventListener('paste', (event) => {
+                if (event.target && event.target.id === 'recognition-import-text') return;
                 const text = event.clipboardData && event.clipboardData.getData('text/plain');
-                if (!text || !text.startsWith('EPIC_RECOGNITION_V1\n')) return;
-                event.preventDefault();
+                if (!text) return;
                 try {
-                    const payload = JSON.parse(text.slice('EPIC_RECOGNITION_V1\n'.length));
-                    if (payload.type !== 'epic-recognition' || !Array.isArray(payload.nominees) || !payload.nominees.length) throw new Error('Invalid Recognition package');
-
-                    let targetIndex = slidesState.findIndex(slide => slide.layout === 'feedback');
-                    const importedSlide = {
-                        id: targetIndex >= 0 ? slidesState[targetIndex].id : 'recognition-' + Date.now(),
-                        name: 'Feedback & Recognition',
-                        layout: 'feedback',
-                        speaker: 'Team',
-                        title: payload.title || 'Feedback & recognition',
-                        subtitle: 'Recognition',
-                        recognitionGroups: payload.nominees,
-                        recognitionImportedAt: payload.createdAt || new Date().toISOString(),
-                        bgImage: targetIndex >= 0 ? (slidesState[targetIndex].bgImage || '') : '',
-                        notes: 'Recognition overview imported from Weave. Full original descriptions and their individual value categories are stored in the recognitionGroups data on this slide.'
-                    };
-
-                    if (targetIndex >= 0) {
-                        slidesState[targetIndex] = { ...slidesState[targetIndex], ...importedSlide };
-                    } else {
-                        targetIndex = Math.max(slidesState.length - 1, 0);
-                        slidesState.splice(targetIndex, 0, importedSlide);
-                    }
-                    currentSlideIdx = targetIndex;
-                    savePresentationState();
-                    initNavigation();
-                    renderAllSlides();
-                    goToSlide(targetIndex);
-                    if (isEditing) loadEditorFields();
-                    showToast(`✅ Recognition slide updated: ${payload.nominees.length} nominees`, 'success');
+                    const payload = parseRecognitionClipboardText(text);
+                    if (!payload) return;
+                    event.preventDefault();
+                    importRecognitionPayload(payload);
                 } catch (error) {
+                    const looksLikeRecognition = /EPIC_RECOGNITION_V1|[\"']type[\"']\s*:\s*[\"']epic-recognition/.test(text);
+                    if (!looksLikeRecognition) return;
+                    event.preventDefault();
                     console.error('Recognition import failed:', error);
-                    showToast('⚠️ Could not import Recognition data.', 'error');
+                    showToast('⚠️ Recognition data is incomplete. Copy it again from Weave and retry.', 'error');
                 }
             });
         }
@@ -3678,6 +3754,11 @@
                     } else if (e.code === 'KeyN' && isPresenting) {
                         toggleNotesOverlay();
                     } else if (e.code === 'Escape') {
+                        const recognitionImportModal = document.getElementById('recognition-import-modal');
+                        if (recognitionImportModal && recognitionImportModal.classList.contains('open')) {
+                            closeRecognitionImportModal();
+                            return;
+                        }
                         const monthlyArchiveModal = document.getElementById('monthly-archive-modal');
                         if (monthlyArchiveModal && monthlyArchiveModal.classList.contains('open')) {
                             closeMonthlyArchiveModal();
